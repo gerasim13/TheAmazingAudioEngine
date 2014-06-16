@@ -2092,7 +2092,7 @@ NSTimeInterval AEAudioControllerOutputLatency(AEAudioController *controller) {
     Float32 bufferDuration = audioSession.IOBufferDuration;
     if ( _currentBufferDuration != bufferDuration ) self.currentBufferDuration = bufferDuration;
     
-    if ( _inputEnabled ) {
+    if ( _inputEnabled && [[[UIDevice currentDevice] systemVersion] floatValue] >= 7.0 ) {
         [audioSession requestRecordPermission:^(BOOL granted) {
             if ( granted ) {
                 [self updateInputDeviceStatus];
