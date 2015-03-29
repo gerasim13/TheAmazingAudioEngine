@@ -335,7 +335,8 @@ static OSStatus fillComplexBufferInputProc(AudioConverterRef             inAudio
 
 typedef struct __channel_producer_arg_t {
     AEChannelRef channel;
-    AudioTimeStamp inTimeStamp;
+    AudioTimeStamp timeStamp;
+    AudioTimeStamp originalTimeStamp;
     AudioUnitRenderActionFlags *ioActionFlags;
     int nextFilterIndex;
 } channel_producer_arg_t;
@@ -354,7 +355,7 @@ static OSStatus channelAudioProducer(void *userInfo, AudioBufferList *audio, UIn
                 // Run this filter
                 channel_producer_arg_t filterArg = *arg;
                 filterArg.nextFilterIndex = filterIndex+1;
-                return ((AEAudioControllerFilterCallback)callback->callback)((__bridge id)callback->userInfo, (__bridge AEAudioController *)channel->audioController, &channelAudioProducer, (void*)&filterArg, &arg->inTimeStamp, *frames, audio);
+                return ((AEAudioControllerFilterCallback)callback->callback)((__bridge id)callback->userInfo, (__bridge AEAudioController *)channel->audioController, &channelAudioProducer, (void*)&filterArg, &arg->timeStamp, *frames, audio);
             }
             filterIndex++;
         }
@@ -375,7 +376,7 @@ static OSStatus channelAudioProducer(void *userInfo, AudioBufferList *audio, UIn
         AEChannelGroupRef group = (AEChannelGroupRef)channel->ptr;
         
         // Tell mixer/mixer's converter unit to render into audio
-        status = AudioUnitRender(group->converterUnit ? group->converterUnit : group->mixerAudioUnit, arg->ioActionFlags, &arg->inTimeStamp, 0, *frames, audio);
+        status = AudioUnitRender(group->converterUnit ? group->converterUnit : group->mixerAudioUnit, arg->ioActionFlags, &arg->originalTimeStamp, 0, *frames, audio);
         if ( !checkResult(status, "AudioUnitRender") ) return status;
         
         if ( group->level_monitor_data.monitoringEnabled ) {
@@ -383,7 +384,8 @@ static OSStatus channelAudioProducer(void *userInfo, AudioBufferList *audio, UIn
         }
         
         // Advance the sample time, to make sure we continue to render if we're called again with the same arguments
-        arg->inTimeStamp.mSampleTime += *frames;
+        arg->timeStamp.mSampleTime += *frames;
+        arg->originalTimeStamp.mSampleTime += *frames;
     }
     
     return status;
@@ -415,7 +417,8 @@ static OSStatus renderCallback(void *inRefCon, AudioUnitRenderActionFlags *ioAct
     
     channel_producer_arg_t arg = {
         .channel = channel,
-        .inTimeStamp = timestamp,
+        .timeStamp = timestamp,
+        .originalTimeStamp = *inTimeStamp,
         .ioActionFlags = ioActionFlags,
         .nextFilterIndex = 0
     };
@@ -1600,21 +1603,20 @@ static void processPendingMessagesOnRealtimeThread(__unsafe_unretained AEAudioCo
                     TPCircularBufferConsume(&_mainThreadMessageBuffer, messageLength);
                 }
             }
-            
-            if ( !message ) {
-                break;
-            }
-            
-            _pendingResponses--;
-            
-            if ( _pollThread && _pendingResponses == 0 ) {
-                _pollThread.pollInterval = kIdleMessagingPollDuration;
-            }
+        }
+        
+        if ( !message ) {
+            break;
         }
         
         if ( message->responseBlock ) {
             ((__bridge void(^)())message->responseBlock)();
             CFBridgingRelease(message->responseBlock);
+            
+            _pendingResponses--;
+            if ( _pollThread && _pendingResponses == 0 ) {
+                _pollThread.pollInterval = kIdleMessagingPollDuration;
+            }
         } else if ( message->handler ) {
             message->handler(self, 
                              message->userInfoLength > 0
@@ -2442,7 +2444,6 @@ static void interAppConnectedChangeCallback(void *inRefCon, AudioUnit inUnit, Au
     Float64 achievedSampleRate = audioSession.sampleRate;
     if ( achievedSampleRate != sampleRate ) {
         NSLog(@"TAAE: Hardware sample rate is %f", achievedSampleRate);
-        _audioDescription.mSampleRate = achievedSampleRate;
     }
 
     // Determine audio route
@@ -2738,7 +2739,7 @@ static void interAppConnectedChangeCallback(void *inRefCon, AudioUnit inUnit, Au
     
     BOOL inputAvailable          = audioSession.inputAvailable;
     BOOL hardwareInputAvailable  = inputAvailable;
-    int numberOfInputChannels = _audioDescription.mChannelsPerFrame;
+    int numberOfInputChannels    = _audioDescription.mChannelsPerFrame;
     BOOL usingAudiobus           = NO;
     UInt32 usingIAA              = NO;
     
@@ -2751,8 +2752,11 @@ static void interAppConnectedChangeCallback(void *inRefCon, AudioUnit inUnit, Au
         numberOfInputChannels   = 2;
         usingAudiobus           = YES;
     } else if ( usingIAA ) {
-        inputAvailable          = YES;
-        numberOfInputChannels   = 2;
+        AudioStreamBasicDescription inputDescription;
+        UInt32 size = sizeof(inputDescription);
+        AudioUnitGetProperty(_ioAudioUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 1, &inputDescription, &size);
+        numberOfInputChannels   = inputDescription.mChannelsPerFrame;
+        inputAvailable          = numberOfInputChannels > 0;
     } else {
         numberOfInputChannels = 0;
         if ( inputAvailable ) {
