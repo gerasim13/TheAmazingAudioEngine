@@ -15,16 +15,6 @@
 #import "AERecorder.h"
 #import <QuartzCore/QuartzCore.h>
 
-#define checkResult(result,operation) (_checkResult((result),(operation),strrchr(__FILE__, '/')+1,__LINE__))
-static inline BOOL _checkResult(OSStatus result, const char *operation, const char* file, int line) {
-    if ( result != noErr ) {
-        int fourCC = CFSwapInt32HostToBig(result);
-        NSLog(@"%s:%d: %s result %d %08X %4.4s\n", file, line, operation, (int)result, (int)result, (char*)&fourCC);
-        return NO;
-    }
-    return YES;
-}
-
 static const int kInputChannelsChangedContext;
 
 
@@ -66,17 +56,13 @@ static const int kInputChannelsChangedContext;
     self.audioController = audioController;
     
     // Create the first loop player
-    self.loop1 = [AEAudioFilePlayer audioFilePlayerWithURL:[[NSBundle mainBundle] URLForResource:@"Southern Rock Drums" withExtension:@"m4a"]
-                                           audioController:_audioController
-                                                     error:NULL];
+    self.loop1 = [AEAudioFilePlayer audioFilePlayerWithURL:[[NSBundle mainBundle] URLForResource:@"Southern Rock Drums" withExtension:@"m4a"] error:NULL];
     _loop1.volume = 1.0;
     _loop1.channelIsMuted = YES;
     _loop1.loop = YES;
     
     // Create the second loop player
-    self.loop2 = [AEAudioFilePlayer audioFilePlayerWithURL:[[NSBundle mainBundle] URLForResource:@"Southern Rock Organ" withExtension:@"m4a"]
-                                           audioController:_audioController
-                                                     error:NULL];
+    self.loop2 = [AEAudioFilePlayer audioFilePlayerWithURL:[[NSBundle mainBundle] URLForResource:@"Southern Rock Organ" withExtension:@"m4a"] error:NULL];
     _loop2.volume = 1.0;
     _loop2.channelIsMuted = YES;
     _loop2.loop = YES;
@@ -105,9 +91,7 @@ static const int kInputChannelsChangedContext;
     _oscillator.channelIsMuted = YES;
     
     // Create an audio unit channel (a file player)
-    self.audioUnitPlayer = [[AEAudioUnitChannel alloc] initWithComponentDescription:AEAudioComponentDescriptionMake(kAudioUnitManufacturer_Apple, kAudioUnitType_Generator, kAudioUnitSubType_AudioFilePlayer)
-                                                                     audioController:_audioController
-                                                                               error:NULL];
+    self.audioUnitPlayer = [[AEAudioUnitChannel alloc] initWithComponentDescription:AEAudioComponentDescriptionMake(kAudioUnitManufacturer_Apple, kAudioUnitType_Generator, kAudioUnitSubType_AudioFilePlayer)];
     
     // Create a group for loop1, loop2 and oscillator
     _group = [_audioController createChannelGroup];
@@ -349,8 +333,21 @@ static const int kInputChannelsChangedContext;
                 }
                 case 1: {
                     cell.textLabel.text = @"Expander";
-                    ((UISwitch*)cell.accessoryView).on = _expander != nil;
-                    [((UISwitch*)cell.accessoryView) addTarget:self action:@selector(expanderSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+                    UIView *view = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 250, 40)];
+                    UIButton *calibrateButton = [UIButton buttonWithType:UIButtonTypeRoundedRect];
+                    calibrateButton.translatesAutoresizingMaskIntoConstraints = NO;
+                    [calibrateButton setTitle:@"Calibrate" forState:UIControlStateNormal];
+                    [calibrateButton addTarget:self action:@selector(calibrateExpander:) forControlEvents:UIControlEventTouchUpInside];
+                    UISwitch * onSwitch = [[UISwitch alloc] initWithFrame:CGRectZero];
+                    onSwitch.translatesAutoresizingMaskIntoConstraints = NO;
+                    onSwitch.on = _expander != nil;
+                    [onSwitch addTarget:self action:@selector(expanderSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+                    [view addSubview:calibrateButton];
+                    [view addSubview:onSwitch];
+                    [view addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|[calibrateButton][onSwitch]|" options:0 metrics:nil views:NSDictionaryOfVariableBindings(calibrateButton, onSwitch)]];
+                    [view addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[calibrateButton]|" options:0 metrics:nil views:NSDictionaryOfVariableBindings(calibrateButton)]];
+                    [view addConstraint:[NSLayoutConstraint constraintWithItem:onSwitch attribute:NSLayoutAttributeCenterY relatedBy:NSLayoutRelationEqual toItem:view attribute:NSLayoutAttributeCenterY multiplier:1 constant:0]];
+                    cell.accessoryView = view;
                     break;
                 }
                 case 2: {
@@ -465,9 +462,7 @@ static const int kInputChannelsChangedContext;
         self.oneshot = nil;
         _oneshotButton.selected = NO;
     } else {
-        self.oneshot = [AEAudioFilePlayer audioFilePlayerWithURL:[[NSBundle mainBundle] URLForResource:@"Organ Run" withExtension:@"m4a"]
-                                                 audioController:_audioController
-                                                           error:NULL];
+        self.oneshot = [AEAudioFilePlayer audioFilePlayerWithURL:[[NSBundle mainBundle] URLForResource:@"Organ Run" withExtension:@"m4a"] error:NULL];
         _oneshot.removeUponFinish = YES;
         __weak ViewController *weakSelf = self;
         _oneshot.completionBlock = ^{
@@ -483,22 +478,22 @@ static const int kInputChannelsChangedContext;
 - (void)oneshotAudioUnitPlayButtonPressed:(UIButton*)sender {
     if ( !_audioUnitFile ) {
         NSURL *playerFile = [[NSBundle mainBundle] URLForResource:@"Organ Run" withExtension:@"m4a"];
-        checkResult(AudioFileOpenURL((__bridge CFURLRef)playerFile, kAudioFileReadPermission, 0, &_audioUnitFile), "AudioFileOpenURL");
+        AECheckOSStatus(AudioFileOpenURL((__bridge CFURLRef)playerFile, kAudioFileReadPermission, 0, &_audioUnitFile), "AudioFileOpenURL");
     }
     
     // Set the file to play
-    checkResult(AudioUnitSetProperty(_audioUnitPlayer.audioUnit, kAudioUnitProperty_ScheduledFileIDs, kAudioUnitScope_Global, 0, &_audioUnitFile, sizeof(_audioUnitFile)),
+    AECheckOSStatus(AudioUnitSetProperty(_audioUnitPlayer.audioUnit, kAudioUnitProperty_ScheduledFileIDs, kAudioUnitScope_Global, 0, &_audioUnitFile, sizeof(_audioUnitFile)),
                 "AudioUnitSetProperty(kAudioUnitProperty_ScheduledFileIDs)");
 
     // Determine file properties
     UInt64 packetCount;
 	UInt32 size = sizeof(packetCount);
-	checkResult(AudioFileGetProperty(_audioUnitFile, kAudioFilePropertyAudioDataPacketCount, &size, &packetCount),
+	AECheckOSStatus(AudioFileGetProperty(_audioUnitFile, kAudioFilePropertyAudioDataPacketCount, &size, &packetCount),
                 "AudioFileGetProperty(kAudioFilePropertyAudioDataPacketCount)");
 	
 	AudioStreamBasicDescription dataFormat;
 	size = sizeof(dataFormat);
-	checkResult(AudioFileGetProperty(_audioUnitFile, kAudioFilePropertyDataFormat, &size, &dataFormat),
+	AECheckOSStatus(AudioFileGetProperty(_audioUnitFile, kAudioFilePropertyDataFormat, &size, &dataFormat),
                 "AudioFileGetProperty(kAudioFilePropertyDataFormat)");
     
 	// Assign the region to play
@@ -512,12 +507,12 @@ static const int kInputChannelsChangedContext;
 	region.mLoopCount = 0;
 	region.mStartFrame = 0;
 	region.mFramesToPlay = (UInt32)packetCount * dataFormat.mFramesPerPacket;
-	checkResult(AudioUnitSetProperty(_audioUnitPlayer.audioUnit, kAudioUnitProperty_ScheduledFileRegion, kAudioUnitScope_Global, 0, &region, sizeof(region)),
+	AECheckOSStatus(AudioUnitSetProperty(_audioUnitPlayer.audioUnit, kAudioUnitProperty_ScheduledFileRegion, kAudioUnitScope_Global, 0, &region, sizeof(region)),
                 "AudioUnitSetProperty(kAudioUnitProperty_ScheduledFileRegion)");
 	
 	// Prime the player by reading some frames from disk
 	UInt32 defaultNumberOfFrames = 0;
-	checkResult(AudioUnitSetProperty(_audioUnitPlayer.audioUnit, kAudioUnitProperty_ScheduledFilePrime, kAudioUnitScope_Global, 0, &defaultNumberOfFrames, sizeof(defaultNumberOfFrames)),
+	AECheckOSStatus(AudioUnitSetProperty(_audioUnitPlayer.audioUnit, kAudioUnitProperty_ScheduledFilePrime, kAudioUnitScope_Global, 0, &defaultNumberOfFrames, sizeof(defaultNumberOfFrames)),
                 "AudioUnitSetProperty(kAudioUnitProperty_ScheduledFilePrime)");
     
     // Set the start time (now = -1)
@@ -525,7 +520,7 @@ static const int kInputChannelsChangedContext;
 	memset (&startTime, 0, sizeof(startTime));
 	startTime.mFlags = kAudioTimeStampSampleTimeValid;
 	startTime.mSampleTime = -1;
-	checkResult(AudioUnitSetProperty(_audioUnitPlayer.audioUnit, kAudioUnitProperty_ScheduleStartTimeStamp, kAudioUnitScope_Global, 0, &startTime, sizeof(startTime)),
+	AECheckOSStatus(AudioUnitSetProperty(_audioUnitPlayer.audioUnit, kAudioUnitProperty_ScheduleStartTimeStamp, kAudioUnitScope_Global, 0, &startTime, sizeof(startTime)),
 			   "AudioUnitSetProperty(kAudioUnitProperty_ScheduleStartTimeStamp)");
 
 }
@@ -552,7 +547,7 @@ static const int kInputChannelsChangedContext;
 
 - (void)limiterSwitchChanged:(UISwitch*)sender {
     if ( sender.isOn ) {
-        self.limiter = [[AELimiterFilter alloc] initWithAudioController:_audioController];
+        self.limiter = [[AELimiterFilter alloc] init];
         _limiter.level = 0.1;
         [_audioController addFilter:_limiter];
     } else {
@@ -563,7 +558,7 @@ static const int kInputChannelsChangedContext;
 
 - (void)expanderSwitchChanged:(UISwitch*)sender {
     if ( sender.isOn ) {
-        self.expander = [[AEExpanderFilter alloc] initWithAudioController:_audioController];
+        self.expander = [[AEExpanderFilter alloc] init];
         [_audioController addFilter:_expander];
     } else {
         [_audioController removeFilter:_expander];
@@ -571,11 +566,19 @@ static const int kInputChannelsChangedContext;
     }
 }
 
+- (void)calibrateExpander:(UIButton*)sender {
+    if ( !_expander ) return;
+    sender.enabled = NO;
+    [_expander startCalibratingWithCompletionBlock:^{
+        sender.enabled = YES;
+    }];
+}
+
 - (void)reverbSwitchChanged:(UISwitch*)sender {
     if ( sender.isOn ) {
-        self.reverb = [[AEAudioUnitFilter alloc] initWithComponentDescription:AEAudioComponentDescriptionMake(kAudioUnitManufacturer_Apple, kAudioUnitType_Effect, kAudioUnitSubType_Reverb2) audioController:_audioController error:NULL];
-        
-        AudioUnitSetParameter(_reverb.audioUnit, kReverb2Param_DryWetMix, kAudioUnitScope_Global, 0, 100.f, 0);
+        self.reverb = [[AEAudioUnitFilter alloc] initWithComponentDescription:AEAudioComponentDescriptionMake(kAudioUnitManufacturer_Apple, kAudioUnitType_Effect, kAudioUnitSubType_Reverb2) preInitializeBlock:^(AudioUnit audioUnit) {
+            AudioUnitSetParameter(audioUnit, kReverb2Param_DryWetMix, kAudioUnitScope_Global, 0, 100.f, 0);
+        }];
         
         [_audioController addFilter:_reverb];
     } else {
@@ -612,9 +615,9 @@ static const int kInputChannelsChangedContext;
     } else {
         self.recorder = [[AERecorder alloc] initWithAudioController:_audioController];
         NSArray *documentsFolders = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-        NSString *path = [documentsFolders[0] stringByAppendingPathComponent:@"Recording.aiff"];
+        NSString *path = [documentsFolders[0] stringByAppendingPathComponent:@"Recording.m4a"];
         NSError *error = nil;
-        if ( ![_recorder beginRecordingToFileAtPath:path fileType:kAudioFileAIFFType error:&error] ) {
+        if ( ![_recorder beginRecordingToFileAtPath:path fileType:kAudioFileM4AType error:&error] ) {
             [[[UIAlertView alloc] initWithTitle:@"Error" 
                                          message:[NSString stringWithFormat:@"Couldn't start recording: %@", [error localizedDescription]]
                                         delegate:nil
@@ -638,12 +641,12 @@ static const int kInputChannelsChangedContext;
         _playButton.selected = NO;
     } else {
         NSArray *documentsFolders = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-        NSString *path = [documentsFolders[0] stringByAppendingPathComponent:@"Recording.aiff"];
+        NSString *path = [documentsFolders[0] stringByAppendingPathComponent:@"Recording.m4a"];
         
         if ( ![[NSFileManager defaultManager] fileExistsAtPath:path] ) return;
         
         NSError *error = nil;
-        self.player = [AEAudioFilePlayer audioFilePlayerWithURL:[NSURL fileURLWithPath:path] audioController:_audioController error:&error];
+        self.player = [AEAudioFilePlayer audioFilePlayerWithURL:[NSURL fileURLWithPath:path] error:&error];
         
         if ( !_player ) {
             [[[UIAlertView alloc] initWithTitle:@"Error" 
