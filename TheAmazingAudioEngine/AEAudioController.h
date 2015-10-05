@@ -30,6 +30,7 @@ extern "C" {
 #import <AudioToolbox/AudioToolbox.h>
 #import <AudioUnit/AudioUnit.h>
 #import <Foundation/Foundation.h>
+#import "AEMessageQueue.h"
 
 @class AEAudioController;
 
@@ -223,15 +224,8 @@ typedef OSStatus (*AEAudioControllerRenderCallback) (__unsafe_unretained id    c
 
 @end
 
-/*!
- * @var AEAudioSourceInput
- *  Main audio input
- *
- * @var AEAudioSourceMainOutput
- *  Main audio output
- */
-#define AEAudioSourceInput           ((void*)0x01)
-#define AEAudioSourceMainOutput      ((void*)0x02)
+static void * const AEAudioSourceInput         = ((void*)0x01); //!< Main audio input
+static void * const AEAudioSourceMainOutput    = ((void*)0x02); //!< Main audio output
 
 /*!
  * Audio callback
@@ -464,15 +458,6 @@ typedef struct _channel_group_t* AEChannelGroupRef;
 
 @class AEAudioController;
 
-/*!
- * Message handler function
- *
- * @param audioController   The audio controller
- * @param userInfo          Pointer to your data
- * @param userInfoLength    Length of userInfo in bytes
- */
-typedef void (*AEAudioControllerMainThreadMessageHandler)(__unsafe_unretained AEAudioController *audioController, void *userInfo, int userInfoLength);
-
 #pragma mark -
 
 /*!
@@ -495,26 +480,26 @@ typedef void (*AEAudioControllerMainThreadMessageHandler)(__unsafe_unretained AE
 /*!
  * 16-bit stereo audio description, interleaved
  *
- *  This is a 16-bit signed PCM, stereo, interleaved format at 44.1kHz that can be used
- *  with @link initWithAudioDescription: @endlink.
+ *  Deprecated. Use AEAudioStreamBasicDescriptionInterleaved16BitStereo instead.
  */
 + (AudioStreamBasicDescription)interleaved16BitStereoAudioDescription;
+// Soon:    __deprecated_msg("use AEAudioStreamBasicDescriptionInterleaved16BitStereo instead");
 
 /*!
  * 16-bit stereo audio description, non-interleaved
  *
- *  This is a 16-bit signed PCM, stereo, non-interleaved format at 44.1kHz that can be used
- *  with @link initWithAudioDescription: @endlink.
+ *  Deprecated. Use AEAudioStreamBasicDescriptionNonInterleaved16BitStereo instead.
  */
 + (AudioStreamBasicDescription)nonInterleaved16BitStereoAudioDescription;
+// Soon:    __deprecated_msg("use AEAudioStreamBasicDescriptionNonInterleaved16BitStereo instead");
 
 /*!
  * Floating-point stereo audio description, non-interleaved
  *
- *  This is a floating-point PCM, stereo, non-interleaved format at 44.1kHz that can be used
- *  with @link initWithAudioDescription: @endlink.
+ *  Deprecated. Use AEAudioStreamBasicDescriptionNonInterleavedFloatStereo instead.
  */
 + (AudioStreamBasicDescription)nonInterleavedFloatStereoAudioDescription;
+// Soon:    __deprecated_msg("use AEAudioStreamBasicDescriptionNonInterleavedFloatStereo instead");
 
 /*!
  * Determine whether voice processing is available on this device
@@ -569,9 +554,6 @@ typedef void (*AEAudioControllerMainThreadMessageHandler)(__unsafe_unretained AE
  */
 - (id)initWithAudioDescription:(AudioStreamBasicDescription)audioDescription inputEnabled:(BOOL)enableInput useVoiceProcessing:(BOOL)useVoiceProcessing outputEnabled:(BOOL)enableOutput;
 
-
-- (BOOL)updateWithAudioDescription:(AudioStreamBasicDescription)audioDescription inputEnabled:(BOOL)enableInput useVoiceProcessing:(BOOL)useVoiceProcessing outputEnabled:(BOOL)enableOutput;
-
 /*!
  * Start audio engine
  *
@@ -584,6 +566,42 @@ typedef void (*AEAudioControllerMainThreadMessageHandler)(__unsafe_unretained AE
  * Stop audio engine
  */
 - (void)stop;
+
+/*!
+ * Set a new audio description
+ *
+ *  This will cause the audio controller to stop, teardown and recreate its rendering resources,
+ *  then start again (if it was previously running).
+ *
+ * @param audioDescription The new audio description
+ * @param error On output, the error, if one occurred
+ * @result YES on success, NO on failure
+ */
+- (BOOL)setAudioDescription:(AudioStreamBasicDescription)audioDescription error:(NSError**)error;
+
+/*!
+ * Enable or disable input
+ *
+ *  This will cause the audio controller to stop, teardown and recreate its rendering resources,
+ *  then start again (if it was previously running).
+ *
+ * @param inputEnabled Whether to enable input
+ * @param error On output, the error, if one occurred
+ * @result YES on success, NO on failure
+ */
+- (BOOL)setInputEnabled:(BOOL)inputEnabled error:(NSError**)error;
+
+/*!
+ * Enable or disable output
+ *
+ *  This will cause the audio controller to stop, teardown and recreate its rendering resources,
+ *  then start again (if it was previously running).
+ *
+ * @param outputEnabled Whether to enable output
+ * @param error On output, the error, if one occurred
+ * @result YES on success, NO on failure
+ */
+- (BOOL)setOutputEnabled:(BOOL)outputEnabled error:(NSError**)error;
 
 ///@}
 #pragma mark - Channel and channel group management
@@ -1064,7 +1082,15 @@ BOOL AEAudioControllerRenderMainOutput(AEAudioController *audioController, Audio
 ///@{
 
 /*!
- * Send a message to the realtime thread asynchronously, optionally receiving a response via a block
+ * The asynchronous message queue used for safe communication between main and realtime thread
+ *
+ *  If @link running @endlink is NO, then message blocks passed to this instance will be performed 
+ *  on the main thread instead of the realtime thread.
+ */
+@property (nonatomic, readonly, strong) AEMessageQueue *messageQueue;
+
+/*!
+ * Send a message to the realtime thread asynchronously, if running, optionally receiving a response via a block.
  *
  *  This is a synchronization mechanism that allows you to schedule actions to be performed 
  *  on the realtime audio thread without any locking mechanism required.  Pass in a block, and
@@ -1076,7 +1102,10 @@ BOOL AEAudioControllerRenderMainOutput(AEAudioController *audioController, Audio
  *
  *  If provided, the response block will be called on the main thread after the message has
  *  been sent. You may exchange information from the realtime thread to the main thread via a
- *  shared data structure (such as a struct, allocated on the heap in advance).
+ *  shared data structure (such as a struct, allocated on the heap in advance), or __block variables.
+ *
+ *  If [running](@ref running) is NO, then message blocks will be performed on the main thread instead
+ *  of the realtime thread.
  *
  * @param block         A block to be performed on the realtime thread.
  * @param responseBlock A block to be performed on the main thread after the handler has been run, or nil.
@@ -1085,7 +1114,7 @@ BOOL AEAudioControllerRenderMainOutput(AEAudioController *audioController, Audio
                                       responseBlock:(void (^)())responseBlock;
 
 /*!
- * Send a message to the realtime thread synchronously
+ * Send a message to the realtime thread synchronously, if running.
  *
  *  This is a synchronization mechanism that allows you to schedule actions to be performed 
  *  on the realtime audio thread without any locking mechanism required. Pass in a block, and
@@ -1101,17 +1130,48 @@ BOOL AEAudioControllerRenderMainOutput(AEAudioController *audioController, Audio
  *  If all you need is a checkpoint to make sure the Core Audio thread is not mid-render, etc, then
  *  you may pass nil for the block.
  *
+ *  If [running](@ref running) is NO, then message blocks will be performed on the main thread instead
+ *  of the realtime thread.
+ *
+ *  If the block is not processed within a timeout interval, this method will return NO.
+ *
  * @param block         A block to be performed on the realtime thread.
+ * @return              YES if the block could be performed, NO otherwise.
  */
-- (void)performSynchronousMessageExchangeWithBlock:(void (^)())block;
+- (BOOL)performSynchronousMessageExchangeWithBlock:(void (^)())block;
 
 /*!
  * Send a message to the main thread asynchronously
  *
  *  This is a synchronization mechanism that allows you to schedule actions to be performed 
- *  on the main thread, without any locking or memory allocation.  Pass in a function pointer
+ *  on the main thread, without any locking or memory allocation.  Pass in a function pointer and
  *  optionally a pointer to data to be copied and passed to the handler, and the function will 
  *  be called on the realtime thread at the next polling interval.
+ *
+ *  Tip: To pass a pointer (including pointers to __unsafe_unretained Objective-C objects) through the
+ *  userInfo parameter, be sure to pass the address to the pointer, using the "&" prefix:
+ *
+ *  @code
+ *  AEMessageQueueSendMessageToMainThread(queue, myMainThreadFunction, &pointer, sizeof(void*));
+ *  @endcode
+ *
+ *  or
+ *
+ *  @code
+ *  AEMessageQueueSendMessageToMainThread(queue, myMainThreadFunction, &object, sizeof(MyObject*));
+ *  @endcode
+ *
+ *  You can then retrieve the pointer value via a void** dereference from your function:
+ *
+ *  @code
+ *  void * myPointerValue = *(void**)userInfo;
+ *  @endcode
+ *
+ *  To access an Objective-C object pointer, you also need to bridge the pointer value:
+ *
+ *  @code
+ *  MyObject *object = (__bridge MyObject*)*(void**)userInfo;
+ *  @endcode
  *
  * @param audioController The audio controller.
  * @param handler         A pointer to a function to call on the main thread.
@@ -1119,10 +1179,9 @@ BOOL AEAudioControllerRenderMainOutput(AEAudioController *audioController, Audio
  * @param userInfoLength  Length of userInfo in bytes.
  */
 void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AEAudioController *audioController,
-                                                          AEAudioControllerMainThreadMessageHandler    handler, 
-                                                          void                              *userInfo,
-                                                          int                                userInfoLength);
-
+                                                          AEMessageQueueMessageHandler           handler,
+                                                          void                                  *userInfo,
+                                                          int                                    userInfoLength);
 
 ///@}
 #pragma mark - Metering
@@ -1207,6 +1266,11 @@ long AEConvertSecondsToFrames(__unsafe_unretained AEAudioController *audioContro
  * Convert a number of frames into a time span in seconds
  */
 NSTimeInterval AEConvertFramesToSeconds(__unsafe_unretained AEAudioController *audioController, long frames);
+
+/*!
+ * Determine if the current thread is the audio thread
+ */
+BOOL AECurrentThreadIsAudioThread(void);
 
 ///@}
 #pragma mark - Properties
@@ -1456,6 +1520,20 @@ NSTimeInterval AEConvertFramesToSeconds(__unsafe_unretained AEAudioController *a
  *  Note: This property is observable
  */
 @property (nonatomic, readonly) BOOL audioInputAvailable;
+
+/*!
+ * Whether audio input is currently enabled
+ *
+ *  Note: This property is observable
+ */
+@property (nonatomic, readonly) BOOL inputEnabled;
+
+/*!
+ * Whether audio output is currently available
+ *
+ *  Note: This property is observable
+ */
+@property (nonatomic, readonly) BOOL outputEnabled;
 
 /*!
  * The number of audio channels that the current audio input device provides

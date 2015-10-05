@@ -34,6 +34,7 @@ extern "C" {
 #import "AEAudioFileLoaderOperation.h"
 #import "AEAudioFilePlayer.h"
 #import "AEAudioFileWriter.h"
+#import "AEMemoryBufferPlayer.h"
 #import "AEBlockChannel.h"
 #import "AEBlockFilter.h"
 #import "AEBlockAudioReceiver.h"
@@ -42,6 +43,7 @@ extern "C" {
 #import "AEFloatConverter.h"
 #import "AEBlockScheduler.h"
 #import "AEUtilities.h"
+#import "AEMessageQueue.h"
 
 /*!
 @mainpage
@@ -142,7 +144,7 @@ extern "C" {
  ...
  
  self.audioController = [[AEAudioController alloc]
-                            initWithAudioDescription:[AEAudioController nonInterleaved16BitStereoAudioDescription]
+                            initWithAudioDescription:AEAudioStreamBasicDescriptionNonInterleaved16BitStereo
                                 inputEnabled:YES]; // don't forget to autorelease if you don't use ARC!
  @endcode
  
@@ -186,13 +188,12 @@ extern "C" {
  - One-shot playback with a block to call upon completion
  - Pan, volume, mute
  
- To use it, call @link AEAudioFilePlayer::audioFilePlayerWithURL:audioController:error: audioFilePlayerWithURL:audioController:error: @endlink,
+ To use it, call @link AEAudioFilePlayer::audioFilePlayerWithURL:error: audioFilePlayerWithURL:error: @endlink,
  like so:
  
  @code
  NSURL *file = [[NSBundle mainBundle] URLForResource:@"Loop" withExtension:@"m4a"];
  self.loop = [AEAudioFilePlayer audioFilePlayerWithURL:file
-                                       audioController:_audioController
                                                  error:NULL];
  @endcode
  
@@ -763,16 +764,38 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
  
  The Amazing Audio Engine provides a number of utility functions for dealing with audio buffer lists:
  
- - @link AEAllocateAndInitAudioBufferList @endlink will take an `AudioStreamBasicDescription` and a number of frames to
+ - @link AEAudioBufferListCreate @endlink will take an `AudioStreamBasicDescription` and a number of frames to
    allocate, and will allocate and initialise an audio buffer list and the corresponding memory buffers appropriately.
- - @link AECopyAudioBufferList @endlink will copy an existing audio buffer list into a new one, allocating memory as needed.
- - @link AEFreeAudioBufferList @endlink will free the memory pointed to by an audio buffer list.
- - @link AEInitAudioBufferList @endlink will initialize the values of an already-existing audio buffer list.
- - @link AEGetNumberOfFramesInAudioBufferList @endlink will take an `AudioStreamBasicDescription` and return the number
+ - @link AEAudioBufferListCopy @endlink will copy an existing audio buffer list into a new one, allocating memory as
+   needed.
+ - @link AEAudioBufferListFree @endlink will free the memory pointed to by an audio buffer list, and the buffer list
+   itself.
+ - @link AEAudioBufferListCopyOnStack @endlink will make a copy of an existing buffer on the stack (without any
+   memory allocation), and optionally offset its mData pointers; useful for doing offset buffer fills with utilities 
+   that write to AudioBufferLists.
+ - @link AEAudioBufferListGetLength @endlink will take an `AudioStreamBasicDescription` and return the number
    of frames contained within the audio buffer list given the `mDataByteSize` values within.
+ - @link AEAudioBufferListSetLength @endlink sets a buffer list's `mDataByteSize` values to correspond to
+   the given number of frames.
+ - @link AEAudioBufferListOffset @endlink increments a buffer list's `mData` pointers by the given number of frames,
+   and decrements the `mDataByteSize` values accordingly.
+ - @link AEAudioBufferListSilence @endlink clears the values in a buffer list (sets them to zero).
+ - @link AEAudioBufferListGetStructSize @endlink returns the size of an AudioBufferList structure, for use when memcpy-ing buffer list structures.
  
  Note: Do not use those functions above that perform memory allocation or deallocation from within the Core Audio thread,
  as this may cause performance problems.
+ 
+ @section Audio-Formats Defining Audio Formats
+ 
+ Core Audio uses the `AudioStreamBasicDescription` type for describing kinds of audio samples. The Amazing Audio Engine
+ provides a number of utilities for working with these types:
+ 
+ - A number of pre-defined common types: 
+    @link AEAudioStreamBasicDescriptionNonInterleavedFloatStereo @endlink,
+    @link AEAudioStreamBasicDescriptionNonInterleaved16BitStereo @endlink and
+    @link AEAudioStreamBasicDescriptionInterleaved16BitStereo @endlink.
+ - @link AEAudioStreamBasicDescriptionMake @endlink, a method for creating custom types.
+ - @link AEAudioStreamBasicDescriptionSetChannelsPerFrame @endlink, a method for easily modifying the number of channels of audio represented.
  
  @section Vector-Processing Improving Efficiency using Vector Operations
  
@@ -809,8 +832,7 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
  static const int kScratchBufferSize[4096];
  
  AudioBufferList *scratchBufferList
-    = AEAllocateAndInitAudioBufferList([AEAudioController nonInterleavedFloatStereoAudioDescription], 
-                                       kScratchBufferSize);
+    = AEAudioBufferListCreate(AEAudioStreamBasicDescriptionNonInterleavedFloatStereo, kScratchBufferSize);
 
  
  ...
@@ -861,13 +883,13 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
  @endcode
  
  To send messages from the Core Audio thread back to the main thread, you need to
- define a C callback, which takes the form defined by @link AEAudioControllerMainThreadMessageHandler @endlink,
+ define a C callback, which takes the form defined by @link AEMessageQueueMessageHandler @endlink,
  then call @link AEAudioController::AEAudioControllerSendAsynchronousMessageToMainThread AEAudioControllerSendAsynchronousMessageToMainThread @endlink, passing a reference to
  any parameters, with the length of the parameters in bytes.
  
  @code
  struct _myHandler_arg_t { int arg1; int arg2; };
- static void myHandler(AEAudioController *audioController, void *userInfo, int userInfoLength) {
+ static void myHandler(void *userInfo, int userInfoLength) {
     struct _myHandler_arg_t *arg = (struct _myHandler_arg_t*)userInfo;
     NSLog(@"On main thread; args are %d and %d", arg->arg1, arg->arg2);
  }
@@ -889,14 +911,14 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
  callback you provide.
  
  **Note: This is an important distinction.** The bytes pointed to by the 'userInfo' parameter value are passed by *value*, not by reference.
- To pass a pointer to an instance of an Objective-C class, you need to pass a reference to the pointer.
+ To pass a pointer to an instance of an Objective-C class, you need to pass the address to the pointer to copy using the "&" operator.
  
  This:
  
  @code
  AEAudioControllerSendAsynchronousMessageToMainThread(THIS->_audioController,
                                                       myHandler,
-                                                      &THIS,
+                                                      &object,
                                                       sizeof(id) },
  @endcode
  
@@ -905,8 +927,15 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
  @code
  AEAudioControllerSendAsynchronousMessageToMainThread(THIS->_audioController,
                                                       myHandler,
-                                                      THIS,
+                                                      object,
                                                       sizeof(id) },
+ @endcode
+ 
+ To access an Objective-C object pointer from the main thread handler function, you can bridge a 
+ dereferenced `void**` to your object type, like this:
+
+ @code
+ MyObject *object = (__bridge MyObject*)*(void**)userInfo;
  @endcode
   
  @section Timing-Receivers Receiving Time Cues

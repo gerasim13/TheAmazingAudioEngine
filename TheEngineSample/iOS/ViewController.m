@@ -13,13 +13,10 @@
 #import "AEExpanderFilter.h"
 #import "AELimiterFilter.h"
 #import "AERecorder.h"
+#import "AEReverbFilter.h"
 #import <QuartzCore/QuartzCore.h>
 
 static const int kInputChannelsChangedContext;
-
-
-#define kAuxiliaryViewTag 251
-
 
 @interface ViewController () {
     AudioFileID _audioUnitFile;
@@ -34,7 +31,7 @@ static const int kInputChannelsChangedContext;
 @property (nonatomic, strong) AEPlaythroughChannel *playthrough;
 @property (nonatomic, strong) AELimiterFilter *limiter;
 @property (nonatomic, strong) AEExpanderFilter *expander;
-@property (nonatomic, strong) AEAudioUnitFilter *reverb;
+@property (nonatomic, strong) AEReverbFilter *reverb;
 @property (nonatomic, strong) TPOscilloscopeLayer *outputOscilloscope;
 @property (nonatomic, strong) TPOscilloscopeLayer *inputOscilloscope;
 @property (nonatomic, strong) CALayer *inputLevelLayer;
@@ -86,7 +83,7 @@ static const int kInputChannelsChangedContext;
             ((SInt16*)audio->mBuffers[1].mData)[i] = x;
         }
     }];
-    _oscillator.audioDescription = [AEAudioController nonInterleaved16BitStereoAudioDescription];
+    _oscillator.audioDescription = AEAudioStreamBasicDescriptionNonInterleaved16BitStereo;
     
     _oscillator.channelIsMuted = YES;
     
@@ -229,7 +226,7 @@ static const int kInputChannelsChangedContext;
             return 3;
             
         case 3:
-            return 3 + (_audioController.numberOfInputChannels > 1 ? 1 : 0);
+            return 4 + (_audioController.numberOfInputChannels > 1 ? 1 : 0);
             
         default:
             return 0;
@@ -248,48 +245,58 @@ static const int kInputChannelsChangedContext;
     
     cell.accessoryView = nil;
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
-    [[cell viewWithTag:kAuxiliaryViewTag] removeFromSuperview];
     
     switch ( indexPath.section ) {
         case 0: {
-            cell.accessoryView = [[UISwitch alloc] initWithFrame:CGRectZero];
-            UISlider *slider = [[UISlider alloc] initWithFrame:CGRectMake(cell.bounds.size.width - (isiPad ? 250 : 210), 0, 100, cell.bounds.size.height)];
-            slider.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
-            slider.tag = kAuxiliaryViewTag;
+            UIView *view = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 200, 40)];
+            
+            UISlider *slider = [[UISlider alloc] initWithFrame:CGRectZero];
+            slider.translatesAutoresizingMaskIntoConstraints = NO;
             slider.maximumValue = 1.0;
             slider.minimumValue = 0.0;
-            [cell addSubview:slider];
+            
+            UISwitch * onSwitch = [[UISwitch alloc] initWithFrame:CGRectZero];
+            onSwitch.translatesAutoresizingMaskIntoConstraints = NO;
+            onSwitch.on = _expander != nil;
+            [onSwitch addTarget:self action:@selector(expanderSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+            [view addSubview:slider];
+            [view addSubview:onSwitch];
+            [view addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|[slider]-20-[onSwitch]|" options:0 metrics:nil views:NSDictionaryOfVariableBindings(slider, onSwitch)]];
+            [view addConstraint:[NSLayoutConstraint constraintWithItem:slider attribute:NSLayoutAttributeCenterY relatedBy:NSLayoutRelationEqual toItem:view attribute:NSLayoutAttributeCenterY multiplier:1 constant:0]];
+            [view addConstraint:[NSLayoutConstraint constraintWithItem:onSwitch attribute:NSLayoutAttributeCenterY relatedBy:NSLayoutRelationEqual toItem:view attribute:NSLayoutAttributeCenterY multiplier:1 constant:0]];
+            
+            cell.accessoryView = view;
             
             switch ( indexPath.row ) {
                 case 0: {
                     cell.textLabel.text = @"Drums";
-                    ((UISwitch*)cell.accessoryView).on = !_loop1.channelIsMuted;
+                    onSwitch.on = !_loop1.channelIsMuted;
                     slider.value = _loop1.volume;
-                    [((UISwitch*)cell.accessoryView) addTarget:self action:@selector(loop1SwitchChanged:) forControlEvents:UIControlEventValueChanged];
+                    [onSwitch addTarget:self action:@selector(loop1SwitchChanged:) forControlEvents:UIControlEventValueChanged];
                     [slider addTarget:self action:@selector(loop1VolumeChanged:) forControlEvents:UIControlEventValueChanged];
                     break;
                 }
                 case 1: {
                     cell.textLabel.text = @"Organ";
-                    ((UISwitch*)cell.accessoryView).on = !_loop2.channelIsMuted;
+                    onSwitch.on = !_loop2.channelIsMuted;
                     slider.value = _loop2.volume;
-                    [((UISwitch*)cell.accessoryView) addTarget:self action:@selector(loop2SwitchChanged:) forControlEvents:UIControlEventValueChanged];
+                    [onSwitch addTarget:self action:@selector(loop2SwitchChanged:) forControlEvents:UIControlEventValueChanged];
                     [slider addTarget:self action:@selector(loop2VolumeChanged:) forControlEvents:UIControlEventValueChanged];
                     break;
                 }
                 case 2: {
                     cell.textLabel.text = @"Oscillator";
-                    ((UISwitch*)cell.accessoryView).on = !_oscillator.channelIsMuted;
+                    onSwitch.on = !_oscillator.channelIsMuted;
                     slider.value = _oscillator.volume;
-                    [((UISwitch*)cell.accessoryView) addTarget:self action:@selector(oscillatorSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+                    [onSwitch addTarget:self action:@selector(oscillatorSwitchChanged:) forControlEvents:UIControlEventValueChanged];
                     [slider addTarget:self action:@selector(oscillatorVolumeChanged:) forControlEvents:UIControlEventValueChanged];
                     break;
                 }
                 case 3: {
                     cell.textLabel.text = @"Group";
-                    ((UISwitch*)cell.accessoryView).on = ![_audioController channelGroupIsMuted:_group];
+                    onSwitch.on = ![_audioController channelGroupIsMuted:_group];
                     slider.value = [_audioController volumeForChannelGroup:_group];
-                    [((UISwitch*)cell.accessoryView) addTarget:self action:@selector(channelGroupSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+                    [onSwitch addTarget:self action:@selector(channelGroupSwitchChanged:) forControlEvents:UIControlEventValueChanged];
                     [slider addTarget:self action:@selector(channelGroupVolumeChanged:) forControlEvents:UIControlEventValueChanged];
                     break;
                 }
@@ -386,6 +393,12 @@ static const int kInputChannelsChangedContext;
                     break;
                 }
                 case 3: {
+                    cell.textLabel.text = @"Use 48K Audio";
+                    ((UISwitch*)cell.accessoryView).on = fabs(_audioController.audioDescription.mSampleRate - 48000) < 1.0;
+                    [((UISwitch*)cell.accessoryView) addTarget:self action:@selector(sampleRateSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+                    break;
+                }
+                case 4: {
                     cell.textLabel.text = @"Channels";
                     
                     int channelCount = _audioController.numberOfInputChannels;
@@ -541,6 +554,19 @@ static const int kInputChannelsChangedContext;
     _audioController.useMeasurementMode = sender.on;
 }
 
+- (void)sampleRateSwitchChanged:(UISwitch*)sender {
+    AudioStreamBasicDescription audioDescription = _audioController.audioDescription;
+    audioDescription.mSampleRate = sender.on ? 48000 : 44100;
+    NSError * error;
+    if ( ![_audioController setAudioDescription:audioDescription error:&error] ) {
+        [[[UIAlertView alloc] initWithTitle:@"Sample rate change failed"
+                                    message:error.localizedDescription
+                                   delegate:nil
+                          cancelButtonTitle:nil
+                          otherButtonTitles:@"OK", nil] show];
+    }
+}
+
 -(void)inputGainSliderChanged:(UISlider*)slider {
     _audioController.inputGain = slider.value;
 }
@@ -576,10 +602,8 @@ static const int kInputChannelsChangedContext;
 
 - (void)reverbSwitchChanged:(UISwitch*)sender {
     if ( sender.isOn ) {
-        self.reverb = [[AEAudioUnitFilter alloc] initWithComponentDescription:AEAudioComponentDescriptionMake(kAudioUnitManufacturer_Apple, kAudioUnitType_Effect, kAudioUnitSubType_Reverb2) preInitializeBlock:^(AudioUnit audioUnit) {
-            AudioUnitSetParameter(audioUnit, kReverb2Param_DryWetMix, kAudioUnitScope_Global, 0, 100.f, 0);
-        }];
-        
+        self.reverb = [[AEReverbFilter alloc] init];
+        _reverb.dryWetMix = 80;
         [_audioController addFilter:_reverb];
     } else {
         [_audioController removeFilter:_reverb];
