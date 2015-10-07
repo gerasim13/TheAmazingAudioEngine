@@ -911,6 +911,39 @@ static OSStatus ioUnitRenderNotifyCallback(void *inRefCon, AudioUnitRenderAction
     } error:error];
 }
 
+- (BOOL)setAudioDescription:(AudioStreamBasicDescription)audioDescription
+               inputEnabled:(BOOL)inputEnabled
+              outputEnabled:(BOOL)outputEnabled
+                      error:(NSError**)error {
+    
+    if ( !memcmp(&_audioDescription, &audioDescription, sizeof(audioDescription)) &&
+        _inputEnabled == inputEnabled && _outputEnabled == outputEnabled ) return YES;
+    
+    NSAssert([NSThread isMainThread], @"Should be executed on the main thread");
+    
+    return [self reinitializeWithChanges:^{
+        if ( memcmp(&_audioDescription, &audioDescription, sizeof(audioDescription)) ) {
+            [self willChangeValueForKey:@"audioDescription"];
+            _audioDescription = audioDescription;
+            [self didChangeValueForKey:@"audioDescription"];
+        }
+        if ( _inputEnabled != inputEnabled ) {
+            self.inputEnabled = inputEnabled;
+        }
+        if ( _outputEnabled != outputEnabled ) {
+            self.outputEnabled = outputEnabled;
+        }
+        
+#if TARGET_OS_IPHONE
+        [self setAudioSessionCategory:_inputEnabled
+            ? (_outputEnabled ? AVAudioSessionCategoryPlayAndRecord : AVAudioSessionCategoryRecord)
+            : AVAudioSessionCategoryPlayback];
+#endif
+        
+    } error:error];
+    
+}
+
 - (void)dealloc {
     __AEAllocated = NO;
     
@@ -2776,6 +2809,8 @@ static void interAppConnectedChangeCallback(void *inRefCon, AudioUnit inUnit, Au
         _iAudioUnit = NULL;
     }
 #endif
+    
+    [self sendTeardownToChannelsAndFilters];
     
     for ( int i=0; i<_inputCallbackCount; i++ ) {
         if ( _inputCallbacks[i].audioConverter ) {
