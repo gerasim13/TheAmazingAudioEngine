@@ -95,7 +95,10 @@ typedef void (^AECalibrateCompletionBlock)(void);
 - (void)teardown {
     self.audioController = nil;
     self.floatConverter = nil;
-    AEAudioBufferListFree(_scratchBuffer);
+    if ( _scratchBuffer ) {
+        AEAudioBufferListFree(_scratchBuffer);
+        _scratchBuffer = NULL;
+    }
 }
 
 - (void)assignPreset:(AEExpanderFilterPreset)preset {
@@ -191,7 +194,7 @@ static void completeCalibration(void *userInfo, int len) {
 
 static OSStatus filterCallback(__unsafe_unretained AEExpanderFilter *THIS,
                                __unsafe_unretained AEAudioController *audioController,
-                               AEAudioControllerFilterProducer producer,
+                               AEAudioFilterProducer producer,
                                void                     *producerToken,
                                const AudioTimeStamp     *time,
                                UInt32                    frames,
@@ -310,7 +313,7 @@ static OSStatus filterCallback(__unsafe_unretained AEExpanderFilter *THIS,
     return noErr;
 }
 
--(AEAudioControllerFilterCallback)filterCallback {
+-(AEAudioFilterCallback)filterCallback {
     return filterCallback;
 }
 

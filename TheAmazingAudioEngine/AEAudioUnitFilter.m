@@ -34,7 +34,7 @@
     AudioUnit _inConverterUnit;
     AUNode _outConverterNode;
     AudioUnit _outConverterUnit;
-    AEAudioControllerFilterProducer _currentProducer;
+    AEAudioFilterProducer _currentProducer;
     void *_currentProducerToken;
     BOOL _wasBypassed;
 }
@@ -43,6 +43,7 @@
 @end
 
 @implementation AEAudioUnitFilter
+@synthesize audioGraphNode = _node;
 
 - (id)initWithComponentDescription:(AudioComponentDescription)audioComponentDescription {
     return [self initWithComponentDescription:audioComponentDescription preInitializeBlock:nil];
@@ -167,6 +168,7 @@ AudioUnit AEAudioUnitFilterGetAudioUnit(__unsafe_unretained AEAudioUnitFilter * 
         AudioComponentDescription audioConverterDescription = AEAudioComponentDescriptionMake(kAudioUnitManufacturer_Apple, kAudioUnitType_FormatConverter, kAudioUnitSubType_AUConverter);
         if ( !AECheckOSStatus(result=AUGraphAddNode(_audioGraph, &audioConverterDescription, &_inConverterNode), "AUGraphAddNode") ||
             !AECheckOSStatus(result=AUGraphNodeInfo(_audioGraph, _inConverterNode, NULL, &_inConverterUnit), "AUGraphNodeInfo") ||
+            !AECheckOSStatus(result=AudioUnitSetProperty(_inConverterUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &audioDescription, sizeof(AudioStreamBasicDescription)), "AudioUnitSetProperty(kAudioUnitProperty_StreamFormat)") ||
             !AECheckOSStatus(result=AudioUnitSetProperty(_inConverterUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 0, &replacementAudioDescription, sizeof(AudioStreamBasicDescription)), "AudioUnitSetProperty(kAudioUnitProperty_StreamFormat)") ||
             !AECheckOSStatus(result=AudioUnitSetProperty(_inConverterUnit, kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global, 0, &maxFPS, sizeof(maxFPS)), "kAudioUnitProperty_MaximumFramesPerSlice") ||
             !AECheckOSStatus(result=AudioUnitSetProperty(_audioUnit, kAudioUnitProperty_MakeConnection, kAudioUnitScope_Input, 0, &(AudioUnitConnection) {
@@ -279,7 +281,7 @@ AudioUnit AEAudioUnitFilterGetAudioUnit(__unsafe_unretained AEAudioUnitFilter * 
 
 static OSStatus filterCallback(__unsafe_unretained AEAudioUnitFilter *THIS,
                                __unsafe_unretained AEAudioController *audioController,
-                               AEAudioControllerFilterProducer producer,
+                               AEAudioFilterProducer producer,
                                void                     *producerToken,
                                const AudioTimeStamp     *time,
                                UInt32                    frames,
@@ -311,7 +313,7 @@ static OSStatus filterCallback(__unsafe_unretained AEAudioUnitFilter *THIS,
     return noErr;
 }
 
--(AEAudioControllerFilterCallback)filterCallback {
+-(AEAudioFilterCallback)filterCallback {
     return filterCallback;
 }
 

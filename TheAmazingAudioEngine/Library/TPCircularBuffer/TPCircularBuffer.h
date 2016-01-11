@@ -69,7 +69,9 @@ typedef struct {
  * @param buffer Circular buffer
  * @param length Length of buffer
  */
-bool  TPCircularBufferInit(TPCircularBuffer *buffer, int32_t length);
+#define TPCircularBufferInit(buffer, length) \
+    _TPCircularBufferInit(buffer, length, sizeof(*buffer))
+bool _TPCircularBufferInit(TPCircularBuffer *buffer, int32_t length, size_t structSize);
 
 /*!
  * Cleanup buffer
@@ -179,7 +181,7 @@ static __inline__ __attribute__((always_inline)) void TPCircularBufferProduce(TP
 /*!
  * Helper routine to copy bytes to buffer
  *
- *  This copies the given bytes to the buffer, and marks them ready for writing.
+ *  This copies the given bytes to the buffer, and marks them ready for reading.
  *
  * @param buffer Circular buffer
  * @param src Source buffer

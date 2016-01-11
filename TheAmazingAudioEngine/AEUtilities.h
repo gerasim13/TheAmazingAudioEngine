@@ -48,6 +48,28 @@ AudioBufferList *AEAudioBufferListCreate(AudioStreamBasicDescription audioFormat
 #define AEAllocateAndInitAudioBufferList AEAudioBufferListCreate // Legacy alias
 
 /*!
+ * Create an audio buffer list on the stack
+ *
+ *  This is useful for creating buffers for temporary use, without needing to perform any
+ *  memory allocations. It will create a local AudioBufferList* variable on the stack, with 
+ *  a name given by the first argument, and initialise the buffer according to the given
+ *  audio format.
+ *
+ *  The created buffer will have NULL mData pointers and 0 mDataByteSize: you will need to 
+ *  assign these to point to a memory buffer.
+ *
+ * @param name Name of the variable to create on the stack
+ * @param audioFormat The audio format to use
+ */
+#define AEAudioBufferListCreateOnStack(name, audioFormat) \
+    int name ## _numberBuffers = audioFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved \
+                                    ? audioFormat.mChannelsPerFrame : 1; \
+    char name ## _bytes[sizeof(AudioBufferList)+(sizeof(AudioBuffer)*(name ## _numberBuffers-1))]; \
+    memset(&name ## _bytes, 0, sizeof(name ## _bytes)); \
+    AudioBufferList * name = (AudioBufferList*)name ## _bytes; \
+    name->mNumberBuffers = name ## _numberBuffers;
+
+/*!
  * Create a stack copy of the given audio buffer list and offset mData pointers
  *
  *  This is useful for creating buffers that point to an offset into the original buffer,
@@ -80,7 +102,7 @@ AudioBufferList *AEAudioBufferListCreate(AudioStreamBasicDescription audioFormat
  * @param original          The original AudioBufferList to copy
  * @return The new, copied audio buffer list
  */
-AudioBufferList *AEAudioBufferListCopy(AudioBufferList *original);
+AudioBufferList *AEAudioBufferListCopy(const AudioBufferList *original);
 #define AECopyAudioBufferList AEAudioBufferListCopy // Legacy alias
 
 /*!
@@ -103,7 +125,7 @@ void AEAudioBufferListFree(AudioBufferList *bufferList);
  * @param oNumberOfChannels If not NULL, will be set to the number of channels of audio in 'list'
  * @return Number of frames in the buffer list
  */
-UInt32 AEAudioBufferListGetLength(AudioBufferList *bufferList,
+UInt32 AEAudioBufferListGetLength(const AudioBufferList *bufferList,
                                   AudioStreamBasicDescription audioFormat,
                                   int *oNumberOfChannels);
 #define AEGetNumberOfFramesInAudioBufferList AEAudioBufferListGetLength // Legacy alias
@@ -144,7 +166,7 @@ void AEAudioBufferListOffset(AudioBufferList *bufferList,
  * @param offset        Offset into buffer
  * @param length        Number of frames to silence (0 for whole buffer)
  */
-void AEAudioBufferListSilence(AudioBufferList *bufferList,
+void AEAudioBufferListSilence(const AudioBufferList *bufferList,
                               AudioStreamBasicDescription audioFormat,
                               UInt32 offset,
                               UInt32 length);
@@ -160,7 +182,7 @@ void AEAudioBufferListSilence(AudioBufferList *bufferList,
  * @param bufferList    Pointer to an AudioBufferList
  * @return Size of the AudioBufferList structure
  */
-static inline size_t AEAudioBufferListGetStructSize(AudioBufferList *bufferList) {
+static inline size_t AEAudioBufferListGetStructSize(const AudioBufferList *bufferList) {
     return sizeof(AudioBufferList) + (bufferList->mNumberBuffers-1) * sizeof(AudioBuffer);
 }
 
@@ -172,17 +194,17 @@ static inline size_t AEAudioBufferListGetStructSize(AudioBufferList *bufferList)
 /*!
  * 32-bit floating-point PCM audio description, non-interleaved, 44.1kHz
  */
-extern AudioStreamBasicDescription AEAudioStreamBasicDescriptionNonInterleavedFloatStereo;
+extern const AudioStreamBasicDescription AEAudioStreamBasicDescriptionNonInterleavedFloatStereo;
 
 /*!
  * 16-bit stereo PCM audio description, non-interleaved, 44.1kHz
  */
-extern AudioStreamBasicDescription AEAudioStreamBasicDescriptionNonInterleaved16BitStereo;
+extern const AudioStreamBasicDescription AEAudioStreamBasicDescriptionNonInterleaved16BitStereo;
 
 /*!
  * 16-bit stereo PCM audio description, interleaved, 44.1kHz
  */
-extern AudioStreamBasicDescription AEAudioStreamBasicDescriptionInterleaved16BitStereo;
+extern const AudioStreamBasicDescription AEAudioStreamBasicDescriptionInterleaved16BitStereo;
     
 /*!
  * Types of samples, for use with AEAudioStreamBasicDescriptionMake

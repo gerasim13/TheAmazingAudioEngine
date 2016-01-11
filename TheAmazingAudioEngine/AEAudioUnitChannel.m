@@ -39,6 +39,7 @@
 @end
 
 @implementation AEAudioUnitChannel
+@synthesize audioGraphNode = _node;
 
 - (id)initWithComponentDescription:(AudioComponentDescription)audioComponentDescription {
     return [self initWithComponentDescription:audioComponentDescription preInitializeBlock:nil];
@@ -206,7 +207,7 @@ static OSStatus renderCallback(__unsafe_unretained AEAudioUnitChannel *THIS,
     return noErr;
 }
 
--(AEAudioControllerRenderCallback)renderCallback {
+-(AEAudioRenderCallback)renderCallback {
     return renderCallback;
 }
 

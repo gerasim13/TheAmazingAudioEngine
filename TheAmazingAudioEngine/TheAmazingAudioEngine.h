@@ -44,6 +44,7 @@ extern "C" {
 #import "AEBlockScheduler.h"
 #import "AEUtilities.h"
 #import "AEMessageQueue.h"
+#import "AEAudioBufferManager.h"
 
 /*!
 @mainpage
@@ -216,11 +217,12 @@ extern "C" {
  
  The block will be called with three parameters: 
  
- - A timestamp that corresponds to the time the audio will reach the device audio output. If latency compensation
-   is important, this should be offset by the value returned from 
-   @link  AEAudioController::AEAudioControllerOutputLatency AEAudioControllerOutputLatency @endlink. This can also
-   can be performed automatically if you use AEAudioController's
-   @link AEAudioController::automaticLatencyManagement automaticLatencyManagement @endlink feature);
+ - A timestamp that corresponds to the time the audio will reach the device audio output. Timestamp will be
+   automatically offset to factor in system latency if AEAudioController's
+   @link AEAudioController::automaticLatencyManagement automaticLatencyManagement @endlink property is YES
+   (the default). If you disable this setting and latency compensation is important, this should be offset 
+   by the value returned from
+   @link  AEAudioController::AEAudioControllerOutputLatency AEAudioControllerOutputLatency @endlink.
  - the number of audio frames you are expected to produce, and 
  - an AudioBufferList in which to store the generated audio.
  
@@ -230,7 +232,7 @@ extern "C" {
  classes that can act as channels.
  
  The protocol requires that you define a method that returns a pointer to a C function that takes the form
- defined by AEAudioControllerRenderCallback. This C function will be called when audio is required.
+ defined by AEAudioRenderCallback. This C function will be called when audio is required.
  
  <blockquote class="tip">
  If you put this C function within the \@implementation block, you will be able to access instance
@@ -256,7 +258,7 @@ extern "C" {
      return noErr;
  }
  
- -(AEAudioControllerRenderCallback)renderCallback {
+ -(AEAudioRenderCallback)renderCallback {
      return &renderCallback;
  }
  
@@ -271,11 +273,12 @@ extern "C" {
  
  - A reference to your class,
  - A reference to the AEAudioController instance,
- - A timestamp that corresponds to the time the audio will reach the device audio output. If latency compensation
-   is important, this should be offset by the value returned from
-   @link AEAudioController::AEAudioControllerOutputLatency AEAudioControllerOutputLatency @endlink. This can also
-   can be performed automatically if you use AEAudioController's
-   @link AEAudioController::automaticLatencyManagement automaticLatencyManagement @endlink feature);
+ - A timestamp that corresponds to the time the audio will reach the device audio output. Timestamp will be
+   automatically offset to factor in system latency if AEAudioController's
+   @link AEAudioController::automaticLatencyManagement automaticLatencyManagement @endlink property is YES
+   (the default). If you disable this setting and latency compensation is important, this should be offset
+   by the value returned from
+   @link  AEAudioController::AEAudioControllerOutputLatency AEAudioControllerOutputLatency @endlink.
  - the number of audio frames you are expected to produce, and
  - an AudioBufferList in which to store the generated audio.
  
@@ -351,7 +354,7 @@ extern "C" {
  opaque `producerToken` pointer also passed to the block.
  
 @code
-self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer producer,
+self.filter = [AEBlockFilter filterWithBlock:^(AEAudioFilterProducer producer,
                                                void                     *producerToken,
                                                const AudioTimeStamp     *time,
                                                UInt32                    frames,
@@ -370,7 +373,7 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
  classes that can filter audio.
  
  The protocol requires that you define a method that returns a pointer to a C function that takes the form
- defined by AEAudioControllerFilterCallback. This C function will be called when audio is to be filtered.
+ defined by AEAudioFilterCallback. This C function will be called when audio is to be filtered.
  
  <blockquote class="tip">
  If you put this C function within the \@implementation block, you will be able to access instance
@@ -393,7 +396,7 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
  
  static OSStatus filterCallback(__unsafe_unretained MyFilterClass *THIS,
                                 __unsafe_unretained AEAudioController *audioController,
-                                AEAudioControllerFilterProducer producer,
+                                AEAudioFilterProducer producer,
                                 void                     *producerToken,
                                 const AudioTimeStamp     *time,
                                 UInt32                    frames,
@@ -408,7 +411,7 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
      return noErr;
  }
 
- -(AEAudioControllerFilterCallback)filterCallback {
+ -(AEAudioFilterCallback)filterCallback {
      return filterCallback;
  }
  
@@ -494,7 +497,7 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
      // Do something with 'audio'
  }
  
- -(AEAudioControllerAudioCallback)receiverCallback {
+ -(AEAudioReceiverCallback)receiverCallback {
      return receiverCallback;
  }
  @end
@@ -519,11 +522,12 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
  In both cases, your callback or block will be passed:
  
  - An opaque identifier indicating the audio source,
- - A timestamp that corresponds to the time the audio hit the device audio input. If latency compensation
-   is important, this should be offset by the value returned from
-   @link AEAudioController::AEAudioControllerInputLatency AEAudioControllerInputLatency @endlink. This can also
-   can be performed automatically if you use AEAudioController's
-   @link AEAudioController::automaticLatencyManagement automaticLatencyManagement @endlink feature);
+ - A timestamp that corresponds to the time the audio hit the device audio input. Timestamp will be
+   automatically offset to factor in system latency if AEAudioController's
+   @link AEAudioController::automaticLatencyManagement automaticLatencyManagement @endlink property is YES
+   (the default). If you disable this setting and latency compensation is important, this should be offset
+   by the value returned from
+   @link  AEAudioController::AEAudioControllerInputLatency AEAudioControllerInputLatency @endlink.
  - the number of audio frames available, and
  - an AudioBufferList containing the audio.
  
@@ -543,8 +547,8 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
  @link AEAudioPlayable @endlink *and* the @link AEAudioReceiver @endlink protocols, so that it acts as both an
  audio receiver and an audio source.
  
- To use it, initialize it using @link AEPlaythroughChannel::initWithAudioController: initWithAudioController: @endlink,
- then add it as an input receiver using AEAudioController's @link AEAudioController::addInputReceiver: addInputReceiver: @endlink
+ To use it, initialize it then add it as an input receiver using 
+ AEAudioController's @link AEAudioController::addInputReceiver: addInputReceiver: @endlink
  and add it as a channel using @link AEAudioController::addChannels: addChannels: @endlink.
  
  @section Recording Recording
@@ -680,8 +684,7 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
  
  - Receive Audiobus audio by creating an ABReceiverPort and passing it to The Amazing Audio Engine
    via AEAudioController's [audiobusReceiverPort](@ref AEAudioController::audiobusReceiverPort) property.
- - Send your app's audio output via Audiobus by creating an ABSenderPort and assigning it to
-   [audiobusSenderPort](@ref AEAudioController::audiobusSenderPort).
+ - Send your app's audio output via Audiobus by creating an ABSenderPort and passing it your [audio unit](@ref AEAudioController::audioUnit).
  - Send one individual channel via Audiobus by assigning a new ABSenderPort via
    @link AEAudioController::setAudiobusSenderPort:forChannel: setAudiobusSenderPort:forChannel: @endlink
  - Send a channel group via Audiobus by assigning a new ABSenderPort via
@@ -766,6 +769,8 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
  
  - @link AEAudioBufferListCreate @endlink will take an `AudioStreamBasicDescription` and a number of frames to
    allocate, and will allocate and initialise an audio buffer list and the corresponding memory buffers appropriately.
+ - @link AEAudioBufferListCreateOnStack @endlink creates an AudioBufferList variable on the stack, with the number of
+   buffers set appropriate to the given audio description
  - @link AEAudioBufferListCopy @endlink will copy an existing audio buffer list into a new one, allocating memory as
    needed.
  - @link AEAudioBufferListFree @endlink will free the memory pointed to by an audio buffer list, and the buffer list
@@ -784,6 +789,9 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
  
  Note: Do not use those functions above that perform memory allocation or deallocation from within the Core Audio thread,
  as this may cause performance problems.
+ 
+ Additionally, the AEAudioBufferManager class lets you perform standard ARC/retain-release memory management with
+ AudioBufferLists.
  
  @section Audio-Formats Defining Audio Formats
  

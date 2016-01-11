@@ -36,6 +36,43 @@ freely, subject to the following restrictions:
 Changelog
 ---------
 
+### 1.5.5
+
+- Added AEAudioBufferManager class, to enable management of AudioBufferList structures using normal ARC/retain-release memory management techniques
+- Addressed a problem introduced in 1.5.3 that could cause a 30s hang when restarting audio system
+- Revised timestamp management with Audiobus/IAA: now, TAAE will pass uncompensated timestamps to ABReceiverPortReceive, and will assume incoming timestamps, when hosted via IAA or Audiobus, are uncompensated.
+
+### 1.5.4
+
+- Fixed an output latency compensation issue when hosted via Inter-App Audio
+- Deprecated "audiobusSenderPort" facility (use ABSenderPort's audioUnit initializer instead, with AEAudioController's audioUnit property)
+- Improved performance reports (made these less verbose, added percentage of render budget)
+- Fixed a crash when using AEPlaythroughChannel and changing the sample rate
+
+### 1.5.3
+
+- Added AEAudioBufferListCreateOnStack utility
+- Enable automaticLatencyManagement by default
+- Fixed a race condition when using setAudiobusSenderPort*
+- Added tvOS support (thanks to Florian Doyon)
+- Added playAtTime: facility to AEMemoryBufferPlayer (thanks to Anton Holmberg)
+- Added setup/teardown methods to AEInputReceiver
+- Fixed missing setup/teardown calls to input filters
+- Replaced AEPlaythroughChannel initializer
+
+### 1.5.2
+
+- Added composite setAudioDescription:inputEnabled:outputEnabled: update method
+- Added new initializer with AEAudioControllerOptions bitmask (thanks to Jonatan Liljedahl)
+- Added setting to always use the hardware sample rate (thanks to Jonatan Liljedahl)
+- Added missing teardown procedure for channels and filters
+- Fixed incorrect audio input conversion for interleaved formats
+- Fixed conversion issue with AEAudioUnitFilter
+- Fixed OS X build issue by removing AEReverbFilter for OS X (not supported on that platform)
+- Added 'audioGraphNode' properties to ABAudioUnitFilter/Channel
+- Updated TPCircularBuffer with added safety measures that will refuse to compile or crash early when a version mismatch is detected with other instances in your project
+- Address Audiobus issues for apps with both receiver and filter ports
+
 ### 1.5.1
 
 - Important fixes for the iPhone 6S
