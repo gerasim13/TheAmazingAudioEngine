@@ -62,7 +62,6 @@ NSString * kAERecorderErrorKey = @"error";
 
 -(void)dealloc {
     free(_buffer);
-    [super dealloc];
 }
 
 
