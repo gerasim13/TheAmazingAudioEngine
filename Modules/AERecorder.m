@@ -132,10 +132,11 @@ static void reportError(void *userInfo, int length) {
 
 static void audioCallback(__unsafe_unretained AERecorder *THIS,
                           __unsafe_unretained AEAudioController *audioController,
-                          void                     *source,
-                          const AudioTimeStamp     *time,
-                          UInt32                    frames,
-                          AudioBufferList          *audio) {
+                          void                       *source,
+                          AudioUnitRenderActionFlags *ioActionFlags,
+                          const AudioTimeStamp       *time,
+                          UInt32                      frames,
+                          AudioBufferList            *audio) {
     if ( !THIS->_recording ) return;
     
     AEMixerBufferEnqueue(THIS->_mixer, source, audio, frames, time);

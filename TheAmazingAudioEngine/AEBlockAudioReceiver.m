@@ -45,10 +45,11 @@
 
 static void receiverCallback(__unsafe_unretained AEBlockAudioReceiver *THIS,
                              __unsafe_unretained AEAudioController *audioController,
-                             void                     *source,
-                             const AudioTimeStamp     *time,
-                             UInt32                    frames,
-                             AudioBufferList          *audio) {
+                             void                       *source,
+                             AudioUnitRenderActionFlags *ioActionFlags,
+                             const AudioTimeStamp       *time,
+                             UInt32                      frames,
+                             AudioBufferList            *audio) {
     THIS->_block(source, time, frames, audio);
 }
 

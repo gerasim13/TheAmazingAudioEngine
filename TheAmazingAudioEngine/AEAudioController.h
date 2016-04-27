@@ -120,6 +120,7 @@ typedef enum {
  *
  * @param channel           The channel object
  * @param audioController   The Audio Controller
+ * @param ioActionFlags     The action flags
  * @param time              The time the buffer will be played, automatically compensated for hardware latency.
  * @param frames            The number of frames required
  * @param audio             The audio buffer list - audio should be copied into the provided buffers
@@ -127,9 +128,10 @@ typedef enum {
  */
 typedef OSStatus (*AEAudioRenderCallback) (__unsafe_unretained id    channel,
                                            __unsafe_unretained AEAudioController *audioController,
-                                           const AudioTimeStamp     *time,
-                                           UInt32                    frames,
-                                           AudioBufferList          *audio);
+                                           AudioUnitRenderActionFlags *ioActionFlags,
+                                           const AudioTimeStamp       *time,
+                                           UInt32                      frames,
+                                           AudioBufferList            *audio);
 
 typedef AEAudioRenderCallback AEAudioControllerRenderCallback; // Temporary alias
 
@@ -242,19 +244,21 @@ static void * const AEAudioSourceMainOutput    = ((void*)0x02); //!< Main audio 
  *
  *  Do not wait on locks, allocate memory, or call any Objective-C or BSD code.
  *
- * @param receiver   The receiver object
+ * @param receiver        The receiver object
  * @param audioController The Audio Controller
- * @param source     The source of the audio: @link AEAudioSourceInput @endlink, @link AEAudioSourceMainOutput @endlink, an AEChannelGroupRef or an id<AEAudioPlayable>.
- * @param time       The time the audio was received (for input), or the time it will be played (for output), automatically compensated for hardware latency.
- * @param frames     The length of the audio, in frames
- * @param audio      The audio buffer list
+ * @param source          The source of the audio: @link AEAudioSourceInput @endlink, @link AEAudioSourceMainOutput @endlink, an AEChannelGroupRef or an id<AEAudioPlayable>.
+ * @param ioActionFlags   The action flags
+ * @param time            The time the audio was received (for input), or the time it will be played (for output), automatically compensated for hardware latency.
+ * @param frames          The length of the audio, in frames
+ * @param audio           The audio buffer list
  */
 typedef void (*AEAudioReceiverCallback) (__unsafe_unretained id    receiver,
                                          __unsafe_unretained AEAudioController *audioController,
-                                         void                     *source,
-                                         const AudioTimeStamp     *time,
-                                         UInt32                    frames,
-                                         AudioBufferList          *audio);
+                                         void                       *source,
+                                         AudioUnitRenderActionFlags *ioActionFlags,
+                                         const AudioTimeStamp       *time,
+                                         UInt32                      frames,
+                                         AudioBufferList            *audio);
 
 typedef AEAudioReceiverCallback AEAudioControllerAudioCallback; // Temporary alias
     
@@ -342,22 +346,24 @@ typedef AEAudioFilterProducer AEAudioControllerFilterProducer; // Temporary alia
  *
  *  Do not wait on locks, allocate memory, or call any Objective-C or BSD code.
  *
- * @param filter    The filter object
+ * @param filter          The filter object
  * @param audioController The Audio Controller
- * @param producer  A function pointer to be used to produce input audio
- * @param producerToken An opaque pointer to be passed to the producer as the first argument
- * @param time      The time the output audio will be played or the time input audio was received, automatically compensated for hardware latency.
- * @param frames    The length of the required audio, in frames
- * @param audio     The audio buffer list to write output audio to
- * @return A status code
+ * @param producer        A function pointer to be used to produce input audio
+ * @param producerToken   An opaque pointer to be passed to the producer as the first argument
+ * @param ioActionFlags   The action flags
+ * @param time            The time the output audio will be played or the time input audio was received, automatically compensated for hardware latency.
+ * @param frames          The length of the required audio, in frames
+ * @param audio           The audio buffer list to write output audio to
+ * @return                A status code
  */
 typedef OSStatus (*AEAudioFilterCallback)(__unsafe_unretained id    filter,
                                           __unsafe_unretained AEAudioController *audioController,
-                                          AEAudioFilterProducer producer,
-                                          void                     *producerToken,
-                                          const AudioTimeStamp     *time,
-                                          UInt32                    frames,
-                                          AudioBufferList          *audio);
+                                          AEAudioFilterProducer       producer,
+                                          void                       *producerToken,
+                                          AudioUnitRenderActionFlags *ioActionFlags,
+                                          const AudioTimeStamp       *time,
+                                          UInt32                      frames,
+                                          AudioBufferList            *audio);
     
 typedef AEAudioFilterCallback AEAudioControllerFilterCallback; // Temporary alias
 

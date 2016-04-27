@@ -45,11 +45,12 @@
 
 static OSStatus filterCallback(__unsafe_unretained AEBlockFilter *THIS,
                                __unsafe_unretained AEAudioController *audioController,
-                               AEAudioFilterProducer producer,
-                               void                     *producerToken,
-                               const AudioTimeStamp     *time,
-                               UInt32                    frames,
-                               AudioBufferList          *audio) {
+                               AEAudioFilterProducer       producer,
+                               void                       *producerToken,
+                               AudioUnitRenderActionFlags *ioActionFlags,
+                               const AudioTimeStamp       *time,
+                               UInt32                      frames,
+                               AudioBufferList            *audio) {
     THIS->_block(producer, producerToken, time, frames, audio);
     return noErr;
 }

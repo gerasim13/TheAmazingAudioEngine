@@ -281,11 +281,12 @@ AudioUnit AEAudioUnitFilterGetAudioUnit(__unsafe_unretained AEAudioUnitFilter * 
 
 static OSStatus filterCallback(__unsafe_unretained AEAudioUnitFilter *THIS,
                                __unsafe_unretained AEAudioController *audioController,
-                               AEAudioFilterProducer producer,
-                               void                     *producerToken,
-                               const AudioTimeStamp     *time,
-                               UInt32                    frames,
-                               AudioBufferList          *audio) {
+                               AEAudioFilterProducer       producer,
+                               void                       *producerToken,
+                               AudioUnitRenderActionFlags *ioActionFlags,
+                               const AudioTimeStamp       *time,
+                               UInt32                      frames,
+                               AudioBufferList            *audio) {
     
     if ( !THIS->_audioUnit ) {
         THIS->_currentProducer(producerToken, audio, &frames);
@@ -295,8 +296,6 @@ static OSStatus filterCallback(__unsafe_unretained AEAudioUnitFilter *THIS,
     THIS->_currentProducer = producer;
     THIS->_currentProducerToken = producerToken;
     
-    AudioUnitRenderActionFlags flags = 0;
-    
     if ( THIS->_bypassed ) {
         // Bypassed: just advance.
         THIS->_currentProducer(THIS->_currentProducerToken, audio, &frames);
@@ -305,7 +304,7 @@ static OSStatus filterCallback(__unsafe_unretained AEAudioUnitFilter *THIS,
         if ( THIS->_wasBypassed ) AudioUnitReset (THIS->_audioUnit, kAudioUnitScope_Global, 0);
         
         // Render the AudioUnit.
-        AECheckOSStatus(AudioUnitRender(THIS->_outConverterUnit ? THIS->_outConverterUnit : THIS->_audioUnit, &flags, time, 0, frames, audio), "AudioUnitRender");
+        AECheckOSStatus(AudioUnitRender(THIS->_outConverterUnit ? THIS->_outConverterUnit : THIS->_audioUnit, ioActionFlags, time, 0, frames, audio), "AudioUnitRender");
     }
     
     THIS->_wasBypassed = THIS->_bypassed;

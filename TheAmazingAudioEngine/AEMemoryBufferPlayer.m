@@ -124,7 +124,12 @@ static void notifyPlaybackStopped(void *userInfo, int length) {
     THIS->_playhead = 0;
 }
 
-static OSStatus renderCallback(__unsafe_unretained AEMemoryBufferPlayer *THIS, __unsafe_unretained AEAudioController *audioController, const AudioTimeStamp *time, UInt32 frames, AudioBufferList *audio) {
+static OSStatus renderCallback(__unsafe_unretained AEMemoryBufferPlayer *THIS,
+                               __unsafe_unretained AEAudioController *audioController,
+                               AudioUnitRenderActionFlags *ioActionFlags,
+                               const AudioTimeStamp       *time,
+                               UInt32                      frames,
+                               AudioBufferList            *audio) {
     int32_t playhead = THIS->_playhead;
     int32_t originalPlayhead = playhead;
     

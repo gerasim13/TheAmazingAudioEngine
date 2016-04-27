@@ -316,9 +316,10 @@ UInt32 AEAudioFilePlayerGetPlayhead(__unsafe_unretained AEAudioFilePlayer * THIS
 
 static OSStatus renderCallback(__unsafe_unretained AEAudioFilePlayer *THIS,
                                __unsafe_unretained AEAudioController *audioController,
-                               const AudioTimeStamp     *time,
-                               UInt32                    frames,
-                               AudioBufferList          *audio) {
+                               AudioUnitRenderActionFlags *ioActionFlags,
+                               const AudioTimeStamp       *time,
+                               UInt32                      frames,
+                               AudioBufferList            *audio) {
     
     if ( !THIS->_running ) return noErr;
     
@@ -349,7 +350,7 @@ static OSStatus renderCallback(__unsafe_unretained AEAudioFilePlayer *THIS,
     THIS->_startTime = 0;
     
     // Render
-    THIS->_superRenderCallback(THIS, audioController, &adjustedTime, frames, audio);
+    THIS->_superRenderCallback(THIS, audioController, ioActionFlags, &adjustedTime, frames, audio);
     
     // Examine playhead
     int32_t playhead = THIS->_playhead;

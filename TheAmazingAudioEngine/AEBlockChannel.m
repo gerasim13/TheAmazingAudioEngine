@@ -49,9 +49,10 @@
 
 static OSStatus renderCallback(__unsafe_unretained AEBlockChannel *THIS,
                                __unsafe_unretained AEAudioController *audioController,
-                               const AudioTimeStamp     *time,
-                               UInt32                    frames,
-                               AudioBufferList          *audio) {
+                               AudioUnitRenderActionFlags *ioActionFlags,
+                               const AudioTimeStamp       *time,
+                               UInt32                      frames,
+                               AudioBufferList            *audio) {
     THIS->_block(time, frames, audio);
     return noErr;
 }

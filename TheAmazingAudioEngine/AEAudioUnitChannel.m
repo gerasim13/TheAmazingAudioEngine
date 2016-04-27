@@ -194,16 +194,16 @@ AudioUnit AEAudioUnitChannelGetAudioUnit(__unsafe_unretained AEAudioUnitChannel 
 
 static OSStatus renderCallback(__unsafe_unretained AEAudioUnitChannel *THIS,
                                __unsafe_unretained AEAudioController *audioController,
-                               const AudioTimeStamp     *time,
-                               UInt32                    frames,
-                               AudioBufferList          *audio) {
+                               AudioUnitRenderActionFlags *ioActionFlags,
+                               const AudioTimeStamp       *time,
+                               UInt32                      frames,
+                               AudioBufferList            *audio) {
     
     if ( !THIS->_audioUnit ) {
         return noErr;
     }
-    
-    AudioUnitRenderActionFlags flags = 0;
-    AECheckOSStatus(AudioUnitRender(THIS->_converterUnit ? THIS->_converterUnit : THIS->_audioUnit, &flags, time, 0, frames, audio), "AudioUnitRender");
+
+    AECheckOSStatus(AudioUnitRender(THIS->_converterUnit ? THIS->_converterUnit : THIS->_audioUnit, ioActionFlags, time, 0, frames, audio), "AudioUnitRender");
     return noErr;
 }
 
