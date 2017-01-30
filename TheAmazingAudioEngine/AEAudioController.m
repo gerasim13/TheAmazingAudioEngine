@@ -1405,7 +1405,7 @@ static OSStatus ioUnitRenderNotifyCallback(void *inRefCon, AudioUnitRenderAction
     NSAssert(parentGroup != NULL, @"Channel not found");
     
     AudioUnitParameterValue value = group->channel->volume = volume;
-    OSStatus result = AudioUnitSetParameter(parentGroup->mixerAudioUnit, kMultiChannelMixerParam_Volume, kAudioUnitScope_Input, index, value, 0);
+    OSStatus result = AudioUnitSetParameter(parentGroup->mixerAudioUnit, kMultiChannelMixerParam_Volume, kAudioUnitScope_Input, index, group->channel->muted ? 0 : value, 0);
     AECheckOSStatus(result, "AudioUnitSetParameter(kMultiChannelMixerParam_Volume)");
 }
 
