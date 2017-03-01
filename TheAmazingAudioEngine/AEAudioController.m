@@ -141,10 +141,10 @@ typedef struct {
  * Audio level monitoring data
  */
 typedef struct __audio_level_monitor_t {
-    BOOL                monitoringEnabled;
     double              meanAccumulator;
     double              chanMeanAccumulator[kMaximumMonitoringChannels];
     int                 meanBlockCount;
+    int                 monitoringEnabled;
     int                 chanMeanBlockCount;
     float               chanPeak[kMaximumMonitoringChannels];
     float               chanAverage[kMaximumMonitoringChannels];
@@ -153,7 +153,7 @@ typedef struct __audio_level_monitor_t {
     void                *floatConverter;
     AudioBufferList    *scratchBuffer;
     int                 channels;
-    BOOL                reset;
+    int                 reset;
 } audio_level_monitor_t;
 
 /*!
@@ -1307,7 +1307,7 @@ static OSStatus ioUnitRenderNotifyCallback(void *inRefCon, AudioUnitRenderAction
     if ( parentGroup ) {
         // Disable monitoring if needed
         if (group->level_monitor_data.monitoringEnabled) {
-            group->level_monitor_data.monitoringEnabled = NO;
+            OSAtomicCompareAndSwap32(group->level_monitor_data.monitoringEnabled, 0, (volatile int32_t *)&group->level_monitor_data.monitoringEnabled);
             [self configureChannelsForGroup:parentGroup];
         }
 
@@ -1823,11 +1823,10 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
             dispatch_async(dispatch_get_main_queue(), ^{ [self averagePowerLevel:NULL peakHoldLevel:NULL forGroup:group]; });
         } else {
             AEFloatConverter *floatConverter = [[AEFloatConverter alloc] initWithSourceFormat:group->channel->audioDescription];
+            OSAtomicCompareAndSwapPtr(group->level_monitor_data.floatConverter, (__bridge_retained void*)floatConverter, (void *volatile *)&group->level_monitor_data.floatConverter);
             group->level_monitor_data.channels = group->channel->audioDescription.mChannelsPerFrame;
-            group->level_monitor_data.floatConverter = (__bridge_retained void*)floatConverter;
             group->level_monitor_data.scratchBuffer = AEAudioBufferListCreate(floatConverter.floatingPointAudioDescription, kLevelMonitorScratchBufferSize);
-            OSMemoryBarrier();
-            group->level_monitor_data.monitoringEnabled = YES;
+            OSAtomicCompareAndSwap32(group->level_monitor_data.monitoringEnabled, 1, (volatile int32_t *)&group->level_monitor_data.monitoringEnabled);
             
             AEChannelGroupRef parentGroup = NULL;
             int index=0;
@@ -1844,7 +1843,7 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
     if ( averagePower ) *averagePower = 20.0f * log10f(group->level_monitor_data.average);
     if ( peakLevel ) *peakLevel = 20.0f * log10f(group->level_monitor_data.peak);
     
-    group->level_monitor_data.reset = YES;
+    OSAtomicCompareAndSwap32(group->level_monitor_data.reset, 1, (volatile int32_t *)&group->level_monitor_data.reset);
 }
 
 - (void)averagePowerLevels:(Float32*)averagePowers peakHoldLevels:(Float32*)peakLevels forGroup:(AEChannelGroupRef)group channelCount:(UInt32)count {
@@ -1853,11 +1852,11 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
             dispatch_async(dispatch_get_main_queue(), ^{ [self averagePowerLevels:NULL peakHoldLevels:NULL forGroup:group channelCount:0]; });
         } else {
             AEFloatConverter *floatConverter = [[AEFloatConverter alloc] initWithSourceFormat:group->channel->audioDescription];
-            group->level_monitor_data.channels = group->channel->audioDescription.mChannelsPerFrame;
-            group->level_monitor_data.floatConverter = (__bridge_retained void*)floatConverter;
-            group->level_monitor_data.scratchBuffer = AEAudioBufferListCreate(floatConverter.floatingPointAudioDescription, kLevelMonitorScratchBufferSize);
-            OSMemoryBarrier();
-            group->level_monitor_data.monitoringEnabled = YES;
+            AudioBufferList *scratchBuffer = AEAudioBufferListCreate(floatConverter.floatingPointAudioDescription, kLevelMonitorScratchBufferSize);
+            OSAtomicCompareAndSwapPtr(group->level_monitor_data.floatConverter, (__bridge_retained void*)floatConverter, (void *volatile *)&group->level_monitor_data.floatConverter);
+            OSAtomicCompareAndSwapPtr(group->level_monitor_data.scratchBuffer, scratchBuffer, (void *volatile *)&group->level_monitor_data.scratchBuffer);
+            OSAtomicCompareAndSwap32(group->level_monitor_data.channels, group->channel->audioDescription.mChannelsPerFrame, (volatile int32_t *)&group->level_monitor_data.channels);
+            OSAtomicCompareAndSwap32Barrier(group->level_monitor_data.monitoringEnabled, 1, (volatile int32_t *)&group->level_monitor_data.monitoringEnabled);
 
             AEChannelGroupRef parentGroup = NULL;
             int index=0;
@@ -1881,8 +1880,8 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
             peakLevels[i] = 20.0f * log10f(group->level_monitor_data.chanPeak[i]);
         }
     }
-
-    group->level_monitor_data.reset = YES;
+    
+    OSAtomicCompareAndSwap32Barrier(group->level_monitor_data.reset, 1, (volatile int32_t *)&group->level_monitor_data.reset);
 }
 
 - (void)inputAveragePowerLevels:(Float32*)averagePowers peakHoldLevels:(Float32*)peakLevels channelCount:(UInt32)count {
@@ -1891,8 +1890,7 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
         _inputLevelMonitorData.channels = _rawInputAudioDescription.mChannelsPerFrame;
         _inputLevelMonitorData.floatConverter = (__bridge_retained void*)floatConverter;
         _inputLevelMonitorData.scratchBuffer = AEAudioBufferListCreate(floatConverter.floatingPointAudioDescription, kLevelMonitorScratchBufferSize);
-        OSMemoryBarrier();
-        _inputLevelMonitorData.monitoringEnabled = YES;
+        OSAtomicCompareAndSwap32(_inputLevelMonitorData.monitoringEnabled, 1, (volatile int32_t *)&_inputLevelMonitorData.monitoringEnabled);
     }
 
     if ( averagePowers && count > 0) {
@@ -1906,8 +1904,8 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
             peakLevels[i] = 20.0f * log10f(_inputLevelMonitorData.chanPeak[i]);
         }
     }
-
-    _inputLevelMonitorData.reset = YES;
+    
+    OSAtomicCompareAndSwap32(_inputLevelMonitorData.reset, 1, (volatile int32_t *)&_inputLevelMonitorData.reset);
 }
 
 - (void)inputAveragePowerLevel:(Float32*)averagePower peakHoldLevel:(Float32*)peakLevel {
@@ -1916,14 +1914,13 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
         _inputLevelMonitorData.channels = _rawInputAudioDescription.mChannelsPerFrame;
         _inputLevelMonitorData.floatConverter = (__bridge_retained void*)floatConverter;
         _inputLevelMonitorData.scratchBuffer = AEAudioBufferListCreate(floatConverter.floatingPointAudioDescription, kLevelMonitorScratchBufferSize);
-        OSMemoryBarrier();
-        _inputLevelMonitorData.monitoringEnabled = YES;
+        OSAtomicCompareAndSwap32Barrier(_inputLevelMonitorData.monitoringEnabled, 0, (volatile int32_t *)&_inputLevelMonitorData.monitoringEnabled);
     }
     
     if ( averagePower ) *averagePower = 20.0f * log10f(_inputLevelMonitorData.average);
     if ( peakLevel ) *peakLevel = 20.0f * log10f(_inputLevelMonitorData.peak);
     
-    _inputLevelMonitorData.reset = YES;
+    OSAtomicCompareAndSwap32(_inputLevelMonitorData.reset, 1, (volatile int32_t *)&_inputLevelMonitorData.reset);
 }
 
 #pragma mark - Utilities
@@ -4157,17 +4154,18 @@ static void performLevelMonitoring(audio_level_monitor_t* monitor, AudioBufferLi
     if ( !monitor->floatConverter || !monitor->scratchBuffer ) return;
     
     if ( monitor->reset ) {
-        monitor->reset  = NO;
-        monitor->meanBlockCount  = 0;
-        monitor->chanMeanBlockCount  = 0;
         monitor->meanAccumulator = 0;
-        monitor->average         = 0;
-        monitor->peak            = 0;
         for (int i=0; i < kMaximumMonitoringChannels; ++i) {
             monitor->chanMeanAccumulator[i] = 0;
-            monitor->chanAverage[i]         = 0;
-            monitor->chanPeak[i]            = 0;
+            monitor->chanAverage[i] = 0;
+            monitor->chanPeak[i] = 0;
         }
+        
+        OSAtomicCompareAndSwap32(monitor->meanBlockCount, 1, (volatile int32_t *)&monitor->meanBlockCount);
+        OSAtomicCompareAndSwap32(monitor->chanMeanBlockCount, 1, (volatile int32_t *)&monitor->chanMeanBlockCount);
+        OSAtomicCompareAndSwap32(monitor->average, 0, (volatile int32_t *)&monitor->average);
+        OSAtomicCompareAndSwap32(monitor->peak, 0, (volatile int32_t *)&monitor->peak);
+        OSAtomicCompareAndSwap32Barrier(monitor->reset, 1, (volatile int32_t *)&monitor->reset);
     }
     
     UInt32 monitorFrames = min(numberFrames, kLevelMonitorScratchBufferSize);
@@ -4176,8 +4174,14 @@ static void performLevelMonitoring(audio_level_monitor_t* monitor, AudioBufferLi
     for ( int i=0; i<monitor->scratchBuffer->mNumberBuffers && i < kMaximumMonitoringChannels; i++ ) {
         float peak = 0.0;
         vDSP_maxmgv((float*)monitor->scratchBuffer->mBuffers[i].mData, 1, &peak, monitorFrames);
-        if ( peak > monitor->chanPeak[i] ) monitor->chanPeak[i] = peak;
-        if ( peak > monitor->peak ) monitor->peak = peak;
+        if ( peak > monitor->chanPeak[i] )
+        {
+            monitor->chanPeak[i] = peak;
+        }
+        if ( peak > monitor->peak )
+        {
+            monitor->peak = peak;
+        }
         
         float avg = 0.0;
         vDSP_meamgv((float*)monitor->scratchBuffer->mBuffers[i].mData, 1, &avg, monitorFrames);

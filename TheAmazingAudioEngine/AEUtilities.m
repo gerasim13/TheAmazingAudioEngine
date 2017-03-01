@@ -24,6 +24,7 @@
 //
 
 #import "AEUtilities.h"
+#import <libkern/OSAtomic.h>
 #import <mach/mach_time.h>
 
 static double __hostTicksToSeconds = 0.0;
@@ -38,10 +39,15 @@ AudioBufferList *AEAudioBufferListCreate(AudioStreamBasicDescription audioFormat
     if ( !audio ) {
         return NULL;
     }
-    audio->mNumberBuffers = numberOfBuffers;
+    __unused bool sucess = false;
+    sucess = OSAtomicCompareAndSwap32(audio->mNumberBuffers, numberOfBuffers, (volatile int32_t *)&audio->mNumberBuffers);
+    assert(sucess);
+    
     for ( int i=0; i<numberOfBuffers; i++ ) {
         if ( bytesPerBuffer > 0 ) {
-            audio->mBuffers[i].mData = calloc(bytesPerBuffer, 1);
+            sucess = OSAtomicCompareAndSwapPtr(audio->mBuffers[i].mData, calloc(bytesPerBuffer, 1), (void *volatile *)&audio->mBuffers[i].mData);
+            assert(sucess);
+            
             if ( !audio->mBuffers[i].mData ) {
                 for ( int j=0; j<i; j++ ) free(audio->mBuffers[j].mData);
                 free(audio);
