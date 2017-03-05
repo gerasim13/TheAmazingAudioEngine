@@ -25,6 +25,7 @@
 
 #import <AudioToolbox/AudioToolbox.h>
 #import <Foundation/Foundation.h>
+#import <libkern/OSAtomic.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -317,6 +318,39 @@ static inline BOOL _AECheckOSStatus(OSStatus result, const char *operation, cons
     }
     return YES;
 }
+
+#ifndef ATOMIC_SET_INT32
+#define ATOMIC_SET_INT32(A, B) __OSAtomicCompareAndSwap32(A, B, (volatile int32_t*)&A)
+static inline void __OSAtomicCompareAndSwap32(int32_t __oldValue, int32_t __newValue, volatile int32_t *__theValue)
+{
+    int32_t __o = 0;
+    do {
+        __o = __oldValue;
+    } while (!OSAtomicCompareAndSwap32Barrier(__o, __newValue, __theValue));
+}
+#endif
+
+#ifndef ATOMIC_SET_INT64
+#define ATOMIC_SET_INT64(A, B) __OSAtomicCompareAndSwap64(A, B, (volatile int64_t*)&A)
+static inline void __OSAtomicCompareAndSwa64(int64_t __oldValue, int64_t __newValue, volatile OSAtomic_int64_aligned64_t *__theValue)
+{
+    int64_t __o = 0;
+    do {
+        __o = __oldValue;
+    } while (!OSAtomicCompareAndSwap64Barrier(__o, __newValue, __theValue));
+}
+#endif
+
+#ifndef ATOMIC_SET_PTR
+#define ATOMIC_SET_PTR(A, B) __OSAtomicCompareAndSwapPtr(A, B, (void * volatile *)&A)
+static inline void __OSAtomicCompareAndSwapPtr(void *__oldValue, void *__newValue, void * volatile *__theValue)
+{
+    void *__o = NULL;
+    do {
+        __o = __oldValue;
+    } while (!OSAtomicCompareAndSwapPtrBarrier(__o, __newValue, __theValue));
+}
+#endif
     
 ///@}
     
