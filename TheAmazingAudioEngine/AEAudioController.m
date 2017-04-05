@@ -1823,9 +1823,10 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
             dispatch_async(dispatch_get_main_queue(), ^{ [self averagePowerLevel:NULL peakHoldLevel:NULL forGroup:group]; });
         } else {
             AEFloatConverter *floatConverter = [[AEFloatConverter alloc] initWithSourceFormat:group->channel->audioDescription];
+            AudioBufferList *scratchBuffer = AEAudioBufferListCreate(floatConverter.floatingPointAudioDescription, kLevelMonitorScratchBufferSize);
             ATOMIC_SET_PTR(group->level_monitor_data.floatConverter, (__bridge_retained void*)floatConverter);
-            group->level_monitor_data.channels = group->channel->audioDescription.mChannelsPerFrame;
-            group->level_monitor_data.scratchBuffer = AEAudioBufferListCreate(floatConverter.floatingPointAudioDescription, kLevelMonitorScratchBufferSize);
+            ATOMIC_SET_PTR(group->level_monitor_data.scratchBuffer, scratchBuffer);
+            ATOMIC_SET_INT32(group->level_monitor_data.channels, group->channel->audioDescription.mChannelsPerFrame);
             ATOMIC_SET_INT32(group->level_monitor_data.monitoringEnabled, 1);
             
             AEChannelGroupRef parentGroup = NULL;
@@ -4161,10 +4162,10 @@ static void performLevelMonitoring(audio_level_monitor_t* monitor, AudioBufferLi
             monitor->chanPeak[i] = 0;
         }
         
-        ATOMIC_SET_INT32(monitor->meanBlockCount, 1);
-        ATOMIC_SET_INT32(monitor->chanMeanBlockCount, 1);
-        ATOMIC_SET_INT32(monitor->average, 0);
-        ATOMIC_SET_INT32(monitor->peak, 0);
+        monitor->meanBlockCount = 1;
+        monitor->chanMeanBlockCount = 1;
+        monitor->average = 0;
+        monitor->peak = 0;
         ATOMIC_SET_INT32(monitor->reset, 1);
     }
     
