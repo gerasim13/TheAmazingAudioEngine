@@ -855,64 +855,64 @@ static OSStatus ioUnitRenderNotifyCallback(void *inRefCon, AudioUnitRenderAction
 }
 
 - (id)initWithAudioDescription:(AudioStreamBasicDescription)audioDescription options:(AEAudioControllerOptions)options {
-    if ( !(self = [super init]) ) return nil;
-
-    NSAssert([NSThread isMainThread], @"Should be initialized on the main thread");
-    NSAssert(!__AEAllocated, @"You may only use one TAAE instance at a time");
-    __AEAllocated = YES;
-    
-    NSAssert(audioDescription.mFormatID == kAudioFormatLinearPCM, @"Only linear PCM supported");
-
-    AETimeInit();
-    
-    BOOL enableInput            = options & AEAudioControllerOptionEnableInput;
-    BOOL enableOutput           = options & AEAudioControllerOptionEnableOutput;
-    
+    if (self = [super init])
+    {
+        NSAssert([NSThread isMainThread], @"Should be initialized on the main thread");
+        NSAssert(!__AEAllocated, @"You may only use one TAAE instance at a time");
+        __AEAllocated = YES;
+        
+        NSAssert(audioDescription.mFormatID == kAudioFormatLinearPCM, @"Only linear PCM supported");
+        
+        AETimeInit();
+        
+        BOOL enableInput            = options & AEAudioControllerOptionEnableInput;
+        BOOL enableOutput           = options & AEAudioControllerOptionEnableOutput;
+        
 #if TARGET_OS_IPHONE
-    _audioSessionCategory = enableInput ? (enableOutput ? AVAudioSessionCategoryPlayAndRecord : AVAudioSessionCategoryRecord) : AVAudioSessionCategoryPlayback;
-    _allowMixingWithOtherApps = options & AEAudioControllerOptionAllowMixingWithOtherApps;
-    _enableBluetoothInput = options & AEAudioControllerOptionEnableBluetoothInput;
-    _voiceProcessingEnabled = options & AEAudioControllerOptionUseVoiceProcessing;
-    _avoidMeasurementModeForBuiltInSpeaker = YES;
-    _boostBuiltInMicGainInMeasurementMode = YES;
-    _automaticLatencyManagement = YES;
+        _audioSessionCategory = enableInput ? (enableOutput ? AVAudioSessionCategoryPlayAndRecord : AVAudioSessionCategoryRecord) : AVAudioSessionCategoryPlayback;
+        _allowMixingWithOtherApps = options & AEAudioControllerOptionAllowMixingWithOtherApps;
+        _enableBluetoothInput = options & AEAudioControllerOptionEnableBluetoothInput;
+        _voiceProcessingEnabled = options & AEAudioControllerOptionUseVoiceProcessing;
+        _avoidMeasurementModeForBuiltInSpeaker = YES;
+        _boostBuiltInMicGainInMeasurementMode = YES;
+        _automaticLatencyManagement = YES;
 #endif
-    _audioDescription = audioDescription;
-    _inputEnabled = enableInput;
-    _outputEnabled = enableOutput;
-    _masterOutputVolume = 1.0;
-    _useHardwareSampleRate = options & AEAudioControllerOptionUseHardwareSampleRate;
-    _inputMode = AEInputModeFixedAudioFormat;
-    _voiceProcessingOnlyForSpeakerAndMicrophone = YES;
-    _inputTable = (input_table_t *)calloc(sizeof(input_table_t), 1);
-    _inputTable->count = 1;
-    _inputTable->entries = (input_entry_t*)calloc(sizeof(input_entry_t), 1);
-    
+        _audioDescription = audioDescription;
+        _inputEnabled = enableInput;
+        _outputEnabled = enableOutput;
+        _masterOutputVolume = 1.0;
+        _useHardwareSampleRate = options & AEAudioControllerOptionUseHardwareSampleRate;
+        _inputMode = AEInputModeFixedAudioFormat;
+        _voiceProcessingOnlyForSpeakerAndMicrophone = YES;
+        _inputTable = (input_table_t *)calloc(sizeof(input_table_t), 1);
+        _inputTable->count = 1;
+        _inputTable->entries = (input_entry_t*)calloc(sizeof(input_entry_t), 1);
+        
 #if TARGET_OS_IPHONE
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applicationWillEnterForeground:) name:UIApplicationWillEnterForegroundNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applicationWillEnterForeground:) name:UIApplicationWillEnterForegroundNotification object:nil];
 #endif
-    
-    if ( ABConnectionsChangedNotification ) {
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(audiobusConnectionsChanged:) name:ABConnectionsChangedNotification object:nil];
+        
+        if ( ABConnectionsChangedNotification ) {
+            [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(audiobusConnectionsChanged:) name:ABConnectionsChangedNotification object:nil];
+        }
+        
+        _messageQueue = [[AEAudioControllerMessageQueue alloc] initWithMessageBufferLength:kMessageBufferLength];
+        ((AEAudioControllerMessageQueue*)_messageQueue).audioController = self;
+        
+#if TARGET_OS_IPHONE
+        // Register for notifications
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(interruptionNotification:) name:AVAudioSessionInterruptionNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(audioRouteChangeNotification:) name:AVAudioSessionRouteChangeNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(mediaServiceResetNotification:) name:AVAudioSessionMediaServicesWereResetNotification object:nil];
+        
+        // Start housekeeping timer
+        self.housekeepingTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 target:[[AEAudioControllerProxy alloc] initWithAudioController:self] selector:@selector(housekeeping) userInfo:nil repeats:YES];
+#endif
+        
+        if ( ![self initAudioSession] || ![self setup] ) {
+            _audioGraph = NULL;
+        }
     }
-
-    _messageQueue = [[AEAudioControllerMessageQueue alloc] initWithMessageBufferLength:kMessageBufferLength];
-    ((AEAudioControllerMessageQueue*)_messageQueue).audioController = self;
-
-#if TARGET_OS_IPHONE
-    // Register for notifications
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(interruptionNotification:) name:AVAudioSessionInterruptionNotification object:nil];
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(audioRouteChangeNotification:) name:AVAudioSessionRouteChangeNotification object:nil];
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(mediaServiceResetNotification:) name:AVAudioSessionMediaServicesWereResetNotification object:nil];
-    
-    // Start housekeeping timer
-    self.housekeepingTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 target:[[AEAudioControllerProxy alloc] initWithAudioController:self] selector:@selector(housekeeping) userInfo:nil repeats:YES];
-#endif
-    
-    if ( ![self initAudioSession] || ![self setup] ) {
-        _audioGraph = NULL;
-    }
-    
     return self;
 }
 

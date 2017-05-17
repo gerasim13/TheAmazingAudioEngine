@@ -39,7 +39,7 @@ AudioBufferList *AEAudioBufferListCreate(AudioStreamBasicDescription audioFormat
     if ( !audio ) {
         return NULL;
     }
-    __unused bool sucess = false;
+    bool sucess = false;
     sucess = OSAtomicCompareAndSwap32(audio->mNumberBuffers, numberOfBuffers, (volatile int32_t *)&audio->mNumberBuffers);
     assert(sucess);
     
