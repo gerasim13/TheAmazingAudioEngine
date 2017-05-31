@@ -1991,7 +1991,7 @@ BOOL AECurrentThreadIsAudioThread(void) {
 #if !TARGET_OS_TV
     if ( [_audioSessionCategory isEqualToString:AVAudioSessionCategoryPlayAndRecord] ) {
         options |= AVAudioSessionCategoryOptionDefaultToSpeaker;
-        options |= _enableBluetoothInput ? AVAudioSessionCategoryOptionAllowBluetoothA2DP : 0;
+        options |= _enableBluetoothInput ? AVAudioSessionCategoryOptionAllowBluetooth : (AVAudioSessionCategoryOptionAllowBluetoothA2DP | AVAudioSessionCategoryOptionAllowAirPlay);
     }
 #endif
     
