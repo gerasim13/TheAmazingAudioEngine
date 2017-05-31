@@ -1880,7 +1880,7 @@ BOOL AECurrentThreadIsAudioThread(void) {
     if ( [_audioSessionCategory isEqualToString:AVAudioSessionCategoryPlayAndRecord] ) {
         options |= AVAudioSessionCategoryOptionDefaultToSpeaker;
     }
-    options |= _enableBluetoothInput ? AVAudioSessionCategoryOptionAllowBluetooth : 0;
+    options |= _enableBluetoothInput ? AVAudioSessionCategoryOptionAllowBluetooth : (AVAudioSessionCategoryOptionAllowBluetoothA2DP | AVAudioSessionCategoryOptionAllowAirPlay);
 #endif
     
     if ( [_audioSessionCategory isEqualToString:AVAudioSessionCategoryPlayAndRecord] || [_audioSessionCategory isEqualToString:AVAudioSessionCategoryPlayback] ) {
