@@ -29,6 +29,7 @@
 #import "TPCircularBuffer.h"
 #import "AEUtilities.h"
 #import <pthread.h>
+#include <libkern/OSAtomic.h>
 
 /*!
  * Message
