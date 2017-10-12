@@ -220,8 +220,8 @@ void AEMessageQueueProcessMessagesOnRealtimeThread(__unsafe_unretained AEMessage
     }
 }
 
-- (void)performAsynchronousMessageExchangeWithBlock:(void (^)())block
-                                      responseBlock:(void (^)())responseBlock
+- (void)performAsynchronousMessageExchangeWithBlock:(void (^)(void))block
+                                      responseBlock:(void (^)(void))responseBlock
                                        sourceThread:(pthread_t)sourceThread {
     @synchronized ( self ) {
 
@@ -253,11 +253,11 @@ void AEMessageQueueProcessMessagesOnRealtimeThread(__unsafe_unretained AEMessage
 }
 
 
-- (void)performAsynchronousMessageExchangeWithBlock:(void (^)())block responseBlock:(void (^)())responseBlock {
+- (void)performAsynchronousMessageExchangeWithBlock:(void (^)(void))block responseBlock:(void (^)(void))responseBlock {
     [self performAsynchronousMessageExchangeWithBlock:block responseBlock:responseBlock sourceThread:NULL];
 }
 
-- (BOOL)performSynchronousMessageExchangeWithBlock:(void (^)())block {
+- (BOOL)performSynchronousMessageExchangeWithBlock:(void (^)(void))block {
     __block BOOL finished = NO;
     void (^responseBlock)() = ^{ finished = YES; };
     [self performAsynchronousMessageExchangeWithBlock:block

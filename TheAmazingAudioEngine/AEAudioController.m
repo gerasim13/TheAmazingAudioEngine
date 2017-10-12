@@ -1703,11 +1703,11 @@ static OSStatus ioUnitRenderNotifyCallback(void *inRefCon, AudioUnitRenderAction
 
 #pragma mark - Main thread-realtime thread message sending
 
-- (void)performAsynchronousMessageExchangeWithBlock:(void (^)())block responseBlock:(void (^)())responseBlock {
+- (void)performAsynchronousMessageExchangeWithBlock:(void (^)(void))block responseBlock:(void (^)(void))responseBlock {
     [_messageQueue performAsynchronousMessageExchangeWithBlock:block responseBlock:responseBlock];
 }
 
-- (BOOL)performSynchronousMessageExchangeWithBlock:(void (^)())block {
+- (BOOL)performSynchronousMessageExchangeWithBlock:(void (^)(void))block {
     return [_messageQueue performSynchronousMessageExchangeWithBlock:block];
 }
 
@@ -4218,7 +4218,7 @@ static void * firstUpstreamAudiobusSenderPort(AEChannelRef channel) {
 
 @implementation AEAudioControllerMessageQueue
 
-- (void)performAsynchronousMessageExchangeWithBlock:(void (^)())block responseBlock:(void (^)())responseBlock {
+- (void)performAsynchronousMessageExchangeWithBlock:(void (^)(void))block responseBlock:(void (^)(void))responseBlock {
     if ( _audioController.running ) {
         [super performAsynchronousMessageExchangeWithBlock:block responseBlock:responseBlock];
     } else {
@@ -4227,7 +4227,7 @@ static void * firstUpstreamAudiobusSenderPort(AEChannelRef channel) {
     }
 }
 
-- (BOOL)performSynchronousMessageExchangeWithBlock:(void (^)())block {
+- (BOOL)performSynchronousMessageExchangeWithBlock:(void (^)(void))block {
     if ( _audioController.running ) {
         return [super performSynchronousMessageExchangeWithBlock:block];
     } else if ( block ) {
