@@ -2635,7 +2635,7 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
     return YES;
 }
 
-- (BOOL)reinitializeWithChanges:(void(^)())block error:(NSError**)error {
+- (BOOL)reinitializeWithChanges:(void(^)(void))block error:(NSError**)error {
     BOOL wasStarted = _started;
     if ( _started ) {
         [self stopInternal];
