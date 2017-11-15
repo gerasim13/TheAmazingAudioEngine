@@ -28,6 +28,6 @@
 #ifdef DEBUG
 
 // Uncomment the following to enable the realtime watchdog
-// #define REALTIME_WATCHDOG_ENABLED 1
+#define REALTIME_WATCHDOG_ENABLED 1
 
 #endif
