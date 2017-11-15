@@ -543,24 +543,21 @@ typedef enum {
  *
  * @deprecated Use AEAudioStreamBasicDescriptionInterleaved16BitStereo instead.
  */
-+ (AudioStreamBasicDescription)interleaved16BitStereoAudioDescription;
-// Soon:    __deprecated_msg("use AEAudioStreamBasicDescriptionInterleaved16BitStereo instead");
++ (AudioStreamBasicDescription)interleaved16BitStereoAudioDescription __deprecated_msg("use AEAudioStreamBasicDescriptionInterleaved16BitStereo instead");
 
 /*!
  * 16-bit stereo audio description, non-interleaved
  *
  * @deprecated Use AEAudioStreamBasicDescriptionNonInterleaved16BitStereo instead.
  */
-+ (AudioStreamBasicDescription)nonInterleaved16BitStereoAudioDescription;
-// Soon:    __deprecated_msg("use AEAudioStreamBasicDescriptionNonInterleaved16BitStereo instead");
++ (AudioStreamBasicDescription)nonInterleaved16BitStereoAudioDescription __deprecated_msg("use AEAudioStreamBasicDescriptionNonInterleaved16BitStereo instead");
 
 /*!
  * Floating-point stereo audio description, non-interleaved
  *
  * @deprecated Use AEAudioStreamBasicDescriptionNonInterleavedFloatStereo instead.
  */
-+ (AudioStreamBasicDescription)nonInterleavedFloatStereoAudioDescription;
-// Soon:    __deprecated_msg("use AEAudioStreamBasicDescriptionNonInterleavedFloatStereo instead");
++ (AudioStreamBasicDescription)nonInterleavedFloatStereoAudioDescription __deprecated_msg("use AEAudioStreamBasicDescriptionNonInterleavedFloatStereo instead");
 
 /*!
  * Determine whether voice processing is available on this device
@@ -1195,8 +1192,8 @@ typedef enum {
  * @param block         A block to be performed on the realtime thread.
  * @param responseBlock A block to be performed on the main thread after the handler has been run, or nil.
  */
-- (void)performAsynchronousMessageExchangeWithBlock:(void (^)())block
-                                      responseBlock:(void (^)())responseBlock;
+- (void)performAsynchronousMessageExchangeWithBlock:(void (^)(void))block
+                                      responseBlock:(void (^)(void))responseBlock;
 
 /*!
  * Send a message to the realtime thread synchronously, if running.
@@ -1223,7 +1220,7 @@ typedef enum {
  * @param block         A block to be performed on the realtime thread.
  * @return              YES if the block could be performed, NO otherwise.
  */
-- (BOOL)performSynchronousMessageExchangeWithBlock:(void (^)())block;
+- (BOOL)performSynchronousMessageExchangeWithBlock:(void (^)(void))block;
 
 /*!
  * Send a message to the main thread asynchronously
@@ -1299,7 +1296,7 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
  *
  * @param averagePowers If not NULL, each element of the array on output will be set to the average power level of the most recent output audio for each channel up to count, in decibels
  * @param peakLevels If not NULL, each element of the array on output will be set to the peak level of the most recent output audio for each channel up to count, in decibels
- * @param channelCount specifies the number of channels to fill in the averagePowers and peakLevels array parameters
+ * @param count specifies the number of channels to fill in the averagePowers and peakLevels array parameters
  */
 - (void)outputAveragePowerLevels:(Float32*)averagePowers peakHoldLevels:(Float32*)peakLevels channelCount:(UInt32)count;
 
@@ -1315,10 +1312,10 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
 /*!
  * Get output power level information for a particular group, since this method was last called
  *
- * @param averagePower If not NULL, each element of the array on output will be set to the average power level of the most recent audio for each channel, in decibels
- * @param peakLevel If not NULL, each element of the array on output will be set to the peak level of the most recent audio for each channel, in decibels
+ * @param averagePowers If not NULL, each element of the array on output will be set to the average power level of the most recent audio for each channel, in decibels
+ * @param peakLevels If not NULL, each element of the array on output will be set to the peak level of the most recent audio for each channel, in decibels
  * @param group The channel group
- * @param channelCount specifies the number of channels to fill in the averagePowers and peakLevels array parameters
+ * @param count specifies the number of channels to fill in the averagePowers and peakLevels array parameters
  */
 
 - (void)averagePowerLevels:(Float32*)averagePowers peakHoldLevels:(Float32*)peakLevels forGroup:(AEChannelGroupRef)group channelCount:(UInt32)count;
@@ -1336,7 +1333,7 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
  *
  * @param averagePowers If not NULL, each element of the array on output will be set to the average power level of the most recent input audio for each channel up to count, in decibels
  * @param peakLevels If not NULL, each element of the array on output will be set to the peak level of the most recent input audio for each channel up to count, in decibels
- * @param channelCount specifies the number of channels to fill in the averagePowers and peakLevels array parameters
+ * @param count specifies the number of channels to fill in the averagePowers and peakLevels array parameters
  */
 - (void)inputAveragePowerLevels:(Float32*)averagePowers peakHoldLevels:(Float32*)peakLevels channelCount:(UInt32)count;
 
