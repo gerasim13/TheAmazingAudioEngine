@@ -36,7 +36,7 @@
 #include <sys/socket.h>
 
 // Uncomment the following to report every time we spot something bad, not just the first time
-#define REPORT_EVERY_INFRACTION
+// #define REPORT_EVERY_INFRACTION
 
 
 
