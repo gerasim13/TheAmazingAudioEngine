@@ -52,7 +52,7 @@ static const NSTimeInterval kSynchronousTimeoutInterval  = 1.0;
 
 - (id)initWithMessageQueue:(AEMessageQueue*)messageQueue;
 
-@property (nonatomic, assign) NSTimeInterval pollInterval;
+@property (atomic, assign) NSTimeInterval pollInterval;
 
 @end
 
@@ -358,7 +358,7 @@ static BOOL AEMessageQueueHasPendingMainThreadMessages(__unsafe_unretained AEMes
                 if ( AEMessageQueueHasPendingMainThreadMessages(_messageQueue) ) {
                     [_messageQueue performSelectorOnMainThread:@selector(processMainThreadMessages) withObject:nil waitUntilDone:NO];
                 }
-                usleep(_pollInterval*1.0e6);
+                usleep(self.pollInterval*1.0e6);
             }
         }
     }

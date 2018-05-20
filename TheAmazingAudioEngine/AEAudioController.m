@@ -4191,6 +4191,7 @@ static void performLevelMonitoring(audio_level_monitor_t* monitor, AudioBufferLi
         monitor->meanAccumulator += avg;
         monitor->meanBlockCount++;
         
+        OSMemoryBarrier();
         monitor->chanAverage[i] = monitor->chanMeanAccumulator[i] / (double)monitor->chanMeanBlockCount;
         monitor->average = monitor->meanAccumulator / (double)monitor->meanBlockCount;
     }

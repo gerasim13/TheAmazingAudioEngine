@@ -7,6 +7,7 @@
 //
 
 #import "AEBlockScheduler.h"
+#import "AEUtilities.h"
 #import <libkern/OSAtomic.h>
 #import <mach/mach_time.h>
 
@@ -31,8 +32,8 @@ struct _schedule_t {
 
 @interface AEBlockScheduler () {
     struct _schedule_t _schedule[kMaximumSchedules];
-    int _head;
-    int _tail;
+    uint32_t _head;
+    uint32_t _tail;
 }
 @property (nonatomic, strong) NSMutableArray *scheduledIdentifiers;
 @property (nonatomic, weak) AEAudioController *audioController;
@@ -108,16 +109,12 @@ struct _schedule_t {
     }
     
     struct _schedule_t *schedule = &_schedule[_head];
-    
-    schedule->identifier = (__bridge_retained void*)[(NSObject*)identifier copy];
-    schedule->block = (__bridge_retained void*)[block copy];
-    schedule->responseBlock = response ? (__bridge_retained void*)[response copy] : NULL;
-    schedule->time = time;
-    schedule->context = context;
-    
-    OSMemoryBarrier();
-    
-    _head = (_head+1) % kMaximumSchedules;
+    ATOMIC_SET_PTR(schedule->identifier, (__bridge_retained void*)[(NSObject*)identifier copy]);
+    ATOMIC_SET_PTR(schedule->block, (__bridge_retained void*)[block copy]);
+    ATOMIC_SET_PTR(schedule->responseBlock, response ? (__bridge_retained void*)[response copy] : NULL);
+    ATOMIC_SET_INT64(schedule->time, time);
+    ATOMIC_SET_INT32(schedule->context, context);
+    ATOMIC_SET_INT32(_head, (_head+1) % kMaximumSchedules);
     [_scheduledIdentifiers addObject:identifier];
 }
 
@@ -219,7 +216,7 @@ static void timingReceiver(__unsafe_unretained AEBlockScheduler *THIS,
             memset(&THIS->_schedule[i], 0, sizeof(struct _schedule_t));
             if ( i == THIS->_tail ) {
                 while ( !THIS->_schedule[THIS->_tail].block && THIS->_tail != THIS->_head ) {
-                    THIS->_tail = (THIS->_tail + 1) % kMaximumSchedules;
+                    ATOMIC_SET_INT32(THIS->_tail, (THIS->_tail + 1) % kMaximumSchedules);
                 }
             }
         }
