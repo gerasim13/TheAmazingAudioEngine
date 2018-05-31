@@ -1870,15 +1870,15 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
             AECheckOSStatus([self updateGraph], "Update graph");
         }
     }
-
-    if ( averagePowers && count > 0) {
-        for (UInt32 i=0; i < count && i < kMaximumMonitoringChannels; ++i) {
-            averagePowers[i] = 20.0f * log10f(group->level_monitor_data.chanAverage[i]);
+    
+    if ( count > 0 && count < kMaximumMonitoringChannels )
+    {
+        float const one = 1.0;
+        if (averagePowers) {
+            vDSP_vdbcon(group->level_monitor_data.chanAverage, 1, &one, averagePowers, 1, count, 1);
         }
-    }
-    if ( peakLevels && count > 0) {
-        for (UInt32 i=0; i < count && i < kMaximumMonitoringChannels; ++i) {
-            peakLevels[i] = 20.0f * log10f(group->level_monitor_data.chanPeak[i]);
+        if (peakLevels) {
+            vDSP_vdbcon(group->level_monitor_data.chanPeak, 1, &one, peakLevels, 1, count, 1);
         }
     }
     
