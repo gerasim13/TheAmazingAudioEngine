@@ -39,11 +39,35 @@ AudioBufferList *AEAudioBufferListCreate(AudioStreamBasicDescription audioFormat
     
     AudioBufferList *audio = malloc(bufferSize);
     if (audio != NULL) {
-        audio->mNumberBuffers = numberOfBuffers;
+//        audio->mNumberBuffers = numberOfBuffers;
+//        
+//        for ( int i=0; i<numberOfBuffers; i++ ) {
+//            if ( bytesPerBuffer > 0 ) {
+//                audio->mBuffers[i].mData = calloc(bytesPerBuffer, 1);
+//
+//                if ( !audio->mBuffers[i].mData ) {
+//                    for ( int j=0; j<i; j++ ) free(audio->mBuffers[j].mData);
+//                    free(audio);
+//                    return NULL;
+//                }
+//            } else {
+//                audio->mBuffers[i].mData = NULL;
+//            }
+//            audio->mBuffers[i].mDataByteSize = bytesPerBuffer;
+//            audio->mBuffers[i].mNumberChannels = channelsPerBuffer;
+//        }
         
+        if (!OSAtomicCompareAndSwap32Barrier((int32_t)audio->mNumberBuffers,
+                                             (int32_t)numberOfBuffers,
+                                             (volatile int32_t*)&audio->mNumberBuffers))
+        {
+            return NULL;
+        }
+
         for ( int i=0; i<numberOfBuffers; i++ ) {
             if ( bytesPerBuffer > 0 ) {
-                audio->mBuffers[i].mData = calloc(bytesPerBuffer, 1);
+                void *mData = calloc(bytesPerBuffer, 1);
+                ATOMIC_SET_PTR(audio->mBuffers[i].mData, mData);
 
                 if ( !audio->mBuffers[i].mData ) {
                     for ( int j=0; j<i; j++ ) free(audio->mBuffers[j].mData);
@@ -53,8 +77,9 @@ AudioBufferList *AEAudioBufferListCreate(AudioStreamBasicDescription audioFormat
             } else {
                 audio->mBuffers[i].mData = NULL;
             }
-            audio->mBuffers[i].mDataByteSize = bytesPerBuffer;
-            audio->mBuffers[i].mNumberChannels = channelsPerBuffer;
+
+            ATOMIC_SET_INT32(audio->mBuffers[i].mDataByteSize, bytesPerBuffer);
+            ATOMIC_SET_INT32(audio->mBuffers[i].mNumberChannels, channelsPerBuffer);
         }
     }
     return audio;

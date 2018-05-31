@@ -1818,12 +1818,18 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
 }
 
 - (void)averagePowerLevel:(Float32*)averagePower peakHoldLevel:(Float32*)peakLevel forGroup:(AEChannelGroupRef)group {
+    if (![NSThread isMainThread])
+    {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self averagePowerLevel:NULL peakHoldLevel:NULL forGroup:group];
+        });
+        return;
+    }
     if ( !group->level_monitor_data.monitoringEnabled ) {
-        if ( ![NSThread isMainThread] ) {
-            dispatch_async(dispatch_get_main_queue(), ^{ [self averagePowerLevel:NULL peakHoldLevel:NULL forGroup:group]; });
-        } else {
-            AEFloatConverter *floatConverter = [[AEFloatConverter alloc] initWithSourceFormat:group->channel->audioDescription];
-            AudioBufferList *scratchBuffer = AEAudioBufferListCreate(floatConverter.floatingPointAudioDescription, kLevelMonitorScratchBufferSize);
+        AEFloatConverter *floatConverter = [[AEFloatConverter alloc] initWithSourceFormat:group->channel->audioDescription];
+        AudioBufferList *scratchBuffer = AEAudioBufferListCreate(floatConverter.floatingPointAudioDescription, kLevelMonitorScratchBufferSize);
+        if (scratchBuffer)
+        {
             ATOMIC_SET_PTR(group->level_monitor_data.floatConverter, (__bridge_retained void*)floatConverter);
             ATOMIC_SET_PTR(group->level_monitor_data.scratchBuffer, scratchBuffer);
             ATOMIC_SET_INT32(group->level_monitor_data.channels, group->channel->audioDescription.mChannelsPerFrame);
@@ -1841,31 +1847,38 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
         }
     }
     
-    if ( averagePower ) *averagePower = 20.0f * log10f(group->level_monitor_data.average);
-    if ( peakLevel ) *peakLevel = 20.0f * log10f(group->level_monitor_data.peak);
+    float const one = 1.0;
+    if ( averagePower ) vDSP_vdbcon(&group->level_monitor_data.average, 1, &one, averagePower, 1, 1, 1);
+    if ( peakLevel ) vDSP_vdbcon(&group->level_monitor_data.peak, 1, &one, peakLevel, 1, 1, 1);
     
     ATOMIC_SET_INT32(group->level_monitor_data.reset, 1);
 }
 
 - (void)averagePowerLevels:(Float32*)averagePowers peakHoldLevels:(Float32*)peakLevels forGroup:(AEChannelGroupRef)group channelCount:(UInt32)count {
+    if ( ![NSThread isMainThread] ) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self averagePowerLevels:NULL peakHoldLevels:NULL forGroup:group channelCount:0];
+        });
+        return;
+    }
     if ( !group->level_monitor_data.monitoringEnabled ) {
-        if ( ![NSThread isMainThread] ) {
-            dispatch_async(dispatch_get_main_queue(), ^{ [self averagePowerLevels:NULL peakHoldLevels:NULL forGroup:group channelCount:0]; });
-        } else {
-            AEFloatConverter *floatConverter = [[AEFloatConverter alloc] initWithSourceFormat:group->channel->audioDescription];
-            AudioBufferList *scratchBuffer = AEAudioBufferListCreate(floatConverter.floatingPointAudioDescription, kLevelMonitorScratchBufferSize);
+        AEFloatConverter *floatConverter = [[AEFloatConverter alloc] initWithSourceFormat:group->channel->audioDescription];
+        AudioBufferList *scratchBuffer = AEAudioBufferListCreate(floatConverter.floatingPointAudioDescription, kLevelMonitorScratchBufferSize);
+        
+        if (scratchBuffer)
+        {
             ATOMIC_SET_PTR(group->level_monitor_data.floatConverter, (__bridge_retained void*)floatConverter);
             ATOMIC_SET_PTR(group->level_monitor_data.scratchBuffer, scratchBuffer);
             ATOMIC_SET_INT32(group->level_monitor_data.channels, group->channel->audioDescription.mChannelsPerFrame);
             ATOMIC_SET_INT32(group->level_monitor_data.monitoringEnabled, 1);
-
+            
             AEChannelGroupRef parentGroup = NULL;
             int index=0;
             if ( group != _topGroup ) {
                 parentGroup = [self searchForGroupContainingChannelMatchingPtr:group userInfo:NULL index:&index];
                 NSAssert(parentGroup != NULL, @"Channel group not found");
             }
-
+            
             [self configureChannelsForGroup:parentGroup];
             AECheckOSStatus([self updateGraph], "Update graph");
         }
