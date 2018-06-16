@@ -38,16 +38,17 @@ AudioBufferList *AEAudioBufferListCreate(AudioStreamBasicDescription audioFormat
     
     AudioBufferList *audio = malloc(bufferSize);
     if (audio) {
-        for ( int i=0; i<numberOfBuffers; i++ ) {
-            void* __nullable bufferData = bytesPerBuffer ? calloc(bytesPerBuffer, 1) : NULL;
-            if (!bytesPerBuffer)
+        for ( int i=0; i < numberOfBuffers && bytesPerBuffer; i++ ) {
+            void* __nullable bufferData = calloc(bytesPerBuffer, 1);
+            ATOMIC_SET_PTR(audio->mBuffers[i].mData, bufferData);
+            
+            if (!bufferData)
             {
                 for ( int j=0; j<i; j++ ) free(audio->mBuffers[j].mData);
                 free(audio);
                 return NULL;
             }
             
-            ATOMIC_SET_PTR(audio->mBuffers[i].mData, bufferData);
             ATOMIC_SET_INT32(audio->mBuffers[i].mDataByteSize, bytesPerBuffer);
             ATOMIC_SET_INT32(audio->mBuffers[i].mNumberChannels, channelsPerBuffer);
         }
