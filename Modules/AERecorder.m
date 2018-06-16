@@ -56,7 +56,7 @@ NSString * kAERecorderErrorKey = @"error";
         [_mixer setAudioDescription:*AEAudioControllerInputAudioDescription(audioController) forSource:AEAudioSourceInput];
     }
     _buffer = AEAudioBufferListCreate(audioController.audioDescription, 0);
-    
+    NSParameterAssert(_buffer);
     return self;
 }
 

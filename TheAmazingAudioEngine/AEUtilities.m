@@ -30,32 +30,28 @@
 static double __hostTicksToSeconds = 0.0;
 static double __secondsToHostTicks = 0.0;
 
-AudioBufferList *AEAudioBufferListCreate(AudioStreamBasicDescription audioFormat, int frameCount)
-{
+AudioBufferList *AEAudioBufferListCreate(AudioStreamBasicDescription audioFormat, int frameCount) {
     int numberOfBuffers = audioFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved ? audioFormat.mChannelsPerFrame : 1;
     int channelsPerBuffer = audioFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved ? 1 : audioFormat.mChannelsPerFrame;
     int bytesPerBuffer = audioFormat.mBytesPerFrame * frameCount;
     int bufferSize = sizeof(AudioBufferList) + (numberOfBuffers-1) * sizeof(AudioBuffer);
     
     AudioBufferList *audio = malloc(bufferSize);
-    if (audio != NULL) {
-        audio->mNumberBuffers = numberOfBuffers;
-        
+    if (audio) {
         for ( int i=0; i<numberOfBuffers; i++ ) {
-            if ( bytesPerBuffer > 0 ) {
-                audio->mBuffers[i].mData = calloc(bytesPerBuffer, 1);
-
-                if ( !audio->mBuffers[i].mData ) {
-                    for ( int j=0; j<i; j++ ) free(audio->mBuffers[j].mData);
-                    free(audio);
-                    return NULL;
-                }
-            } else {
-                audio->mBuffers[i].mData = NULL;
+            void* __nullable bufferData = bytesPerBuffer ? calloc(bytesPerBuffer, 1) : NULL;
+            if (!bytesPerBuffer)
+            {
+                for ( int j=0; j<i; j++ ) free(audio->mBuffers[j].mData);
+                free(audio);
+                return NULL;
             }
-            audio->mBuffers[i].mDataByteSize = bytesPerBuffer;
-            audio->mBuffers[i].mNumberChannels = channelsPerBuffer;
+            
+            ATOMIC_SET_PTR(audio->mBuffers[i].mData, bufferData);
+            ATOMIC_SET_INT32(audio->mBuffers[i].mDataByteSize, bytesPerBuffer);
+            ATOMIC_SET_INT32(audio->mBuffers[i].mNumberChannels, channelsPerBuffer);
         }
+        ATOMIC_SET_INT32(audio->mNumberBuffers, numberOfBuffers);
     }
     return audio;
 }

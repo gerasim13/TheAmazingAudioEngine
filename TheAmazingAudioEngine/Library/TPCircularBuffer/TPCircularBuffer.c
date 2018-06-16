@@ -124,7 +124,8 @@ bool _TPCircularBufferInit(TPCircularBuffer *buffer, int32_t length, size_t stru
         
         buffer->buffer = (void*)bufferAddress;
         buffer->fillCount = 0;
-        buffer->head = buffer->tail = 0;
+        buffer->head = 0;
+        buffer->tail = 0;
         buffer->atomic = true;
         
         return true;
