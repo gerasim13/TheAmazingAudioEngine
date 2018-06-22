@@ -326,7 +326,7 @@ CF_INLINE void __OSAtomicCompareAndSwap32(int32_t __oldValue, int32_t __newValue
     int32_t __o = 0;
     do {
         __o = __oldValue;
-    } while (!OSAtomicCompareAndSwap32(__o, __newValue, __theValue));
+    } while (!OSAtomicCompareAndSwap32Barrier(__o, __newValue, __theValue));
 }
 #endif
 
@@ -337,7 +337,7 @@ CF_INLINE void __OSAtomicCompareAndSwap64(int64_t __oldValue, int64_t __newValue
     int64_t __o = 0;
     do {
         __o = __oldValue;
-    } while (!OSAtomicCompareAndSwap64(__o, __newValue, __theValue));
+    } while (!OSAtomicCompareAndSwap64Barrier(__o, __newValue, __theValue));
 }
 #endif
 
@@ -348,7 +348,7 @@ CF_INLINE void __OSAtomicCompareAndSwapPtr(void *__oldValue, void *__newValue, v
     void *__o = NULL;
     do {
         __o = __oldValue;
-    } while (!OSAtomicCompareAndSwapPtr(__o, __newValue, __theValue));
+    } while (!OSAtomicCompareAndSwapPtrBarrier(__o, __newValue, __theValue));
 }
 #endif
     

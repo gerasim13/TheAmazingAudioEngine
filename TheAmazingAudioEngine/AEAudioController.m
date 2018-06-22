@@ -1898,17 +1898,13 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
         _inputLevelMonitorData.scratchBuffer = AEAudioBufferListCreate(floatConverter.floatingPointAudioDescription, kLevelMonitorScratchBufferSize);
         ATOMIC_SET_INT32(_inputLevelMonitorData.monitoringEnabled, 1);
     }
-
-    if ( averagePowers && count > 0) {
-        for (UInt32 i=0; i < count && i < kMaximumMonitoringChannels; ++i) {
-            averagePowers[i] = 20.0f * log10f(_inputLevelMonitorData.chanAverage[i]);
-        }
+    
+    float const one = 1.0;
+    if (averagePowers && count > 0) {
+        vDSP_vdbcon(_inputLevelMonitorData.chanAverage, 1, &one, averagePowers, 1, 1, 1);
     }
-
-    if ( peakLevels && count > 0) {
-        for (UInt32 i=0; i < count && i < kMaximumMonitoringChannels; ++i) {
-            peakLevels[i] = 20.0f * log10f(_inputLevelMonitorData.chanPeak[i]);
-        }
+    if (peakLevels && count > 0) {
+        vDSP_vdbcon(_inputLevelMonitorData.chanPeak, 1, &one, peakLevels, 1, 1, 1);
     }
     
     ATOMIC_SET_INT32(_inputLevelMonitorData.reset, 1);
@@ -1922,9 +1918,14 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
         _inputLevelMonitorData.scratchBuffer = AEAudioBufferListCreate(floatConverter.floatingPointAudioDescription, kLevelMonitorScratchBufferSize);
         ATOMIC_SET_INT32(_inputLevelMonitorData.monitoringEnabled, 0);
     }
-    
-    if ( averagePower ) *averagePower = 20.0f * log10f(_inputLevelMonitorData.average);
-    if ( peakLevel ) *peakLevel = 20.0f * log10f(_inputLevelMonitorData.peak);
+
+    float const one = 1.0;
+    if (averagePower) {
+        vDSP_vdbcon(&_inputLevelMonitorData.average, 1, &one, averagePower, 1, 1, 1);
+    }
+    if (peakLevel) {
+        vDSP_vdbcon(&_inputLevelMonitorData.peak, 1, &one, peakLevel, 1, 1, 1);
+    }
     
     ATOMIC_SET_INT32(_inputLevelMonitorData.reset, 1);
 }
