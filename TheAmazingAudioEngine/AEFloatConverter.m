@@ -73,7 +73,7 @@ static OSStatus complexInputDataProc(AudioConverterRef             inAudioConver
 }
 
 - (void)updateFormats {
-    _floatAudioDescription = (AudioStreamBasicDescription) {
+    AudioStreamBasicDescription floatAudioDescription = (AudioStreamBasicDescription) {
         .mFormatID          = kAudioFormatLinearPCM,
         .mFormatFlags       = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked | kAudioFormatFlagIsNonInterleaved,
         .mChannelsPerFrame  = _floatFormatChannelsPerFrame ? _floatFormatChannelsPerFrame : _sourceAudioDescription.mChannelsPerFrame,
@@ -83,6 +83,7 @@ static OSStatus complexInputDataProc(AudioConverterRef             inAudioConver
         .mBitsPerChannel    = 8 * sizeof(float),
         .mSampleRate        = _sourceAudioDescription.mSampleRate
     };
+    memcpy(&_floatAudioDescription, &floatAudioDescription, sizeof(AudioStreamBasicDescription));
     
     if ( _toFloatConverter ) {
         AudioConverterDispose(_toFloatConverter);
