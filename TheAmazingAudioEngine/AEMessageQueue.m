@@ -274,8 +274,8 @@ void AEMessageQueueProcessMessagesOnRealtimeThread(__unsafe_unretained AEMessage
 }
 
 - (BOOL)performSynchronousMessageExchangeWithBlock:(void (^)(void))block {
-    __block BOOL finished = NO;
-    void (^responseBlock)(void) = ^{ finished = YES; };
+    __block atomic_bool finished = false;
+    void (^responseBlock)(void) = ^{ atomic_store_explicit(&finished, true, memory_order_release); };
     [self performAsynchronousMessageExchangeWithBlock:block
                                         responseBlock:responseBlock
                                          sourceThread:pthread_self()];
@@ -284,7 +284,7 @@ void AEMessageQueueProcessMessagesOnRealtimeThread(__unsafe_unretained AEMessage
     uint64_t giveUpTime = AECurrentTimeInHostTicks() + AEHostTicksFromSeconds(kSynchronousTimeoutInterval);
     while ( !finished && AECurrentTimeInHostTicks() < giveUpTime ) {
         [self processMainThreadMessagesMatchingResponseBlock:responseBlock];
-        if ( finished ) break;
+        if ( atomic_load_explicit(&finished, memory_order_acquire) ) break;
         [NSThread sleepForTimeInterval: kActiveMessagingPollDuration];
     }
     
