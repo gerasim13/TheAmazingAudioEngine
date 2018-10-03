@@ -9,6 +9,7 @@
 #import "AEBlockScheduler.h"
 #import "AEUtilities.h"
 #import <libkern/OSAtomic.h>
+#import <stdatomic.h>
 #import <mach/mach_time.h>
 
 static double __hostTicksToSeconds = 0.0;
@@ -23,17 +24,17 @@ NSString const * AEBlockSchedulerKeyIdentifier = @"identifier";
 NSString const * AEBlockSchedulerKeyTimingContext = @"context";
 
 struct _schedule_t {
-    void *block;
-    void *responseBlock;
-    uint64_t time;
-    AEAudioTimingContext context;
-    void *identifier;
+    void * _Atomic block;
+    void * _Atomic responseBlock;
+    void * _Atomic identifier;
+    atomic_uint_fast64_t time;
+    atomic_uint_fast32_t context; // AEAudioTimingContext
 };
 
 @interface AEBlockScheduler () {
-    struct _schedule_t _schedule[kMaximumSchedules];
-    uint32_t _head;
-    uint32_t _tail;
+    struct _schedule_t   _schedule[kMaximumSchedules];
+    atomic_uint_fast32_t _head;
+    atomic_uint_fast32_t _tail;
 }
 @property (nonatomic, strong) NSMutableArray *scheduledIdentifiers;
 @property (nonatomic, weak) AEAudioController *audioController;
@@ -103,18 +104,37 @@ struct _schedule_t {
 -(void)scheduleBlock:(AEBlockSchedulerBlock)block atTime:(uint64_t)time timingContext:(AEAudioTimingContext)context identifier:(id<NSCopying>)identifier mainThreadResponseBlock:(AEBlockSchedulerResponseBlock)response {
     NSAssert(identifier != nil && block != nil, @"Identifier and block must not be nil");
     
-    if ( (_head+1)%kMaximumSchedules == _tail ) {
+    uint32_t currentHead = atomic_load_explicit(&_head, memory_order_acquire);
+    uint32_t currentTail = atomic_load_explicit(&_tail, memory_order_acquire);
+    
+    if ( (currentHead+1)%kMaximumSchedules == currentTail ) {
         NSLog(@"Unable to schedule block %@: No space in scheduling table.", identifier);
         return;
     }
     
-    struct _schedule_t *schedule = &_schedule[_head];
-    ATOMIC_SET_PTR(schedule->identifier, (__bridge_retained void*)[(NSObject*)identifier copy]);
-    ATOMIC_SET_PTR(schedule->block, (__bridge_retained void*)[block copy]);
-    ATOMIC_SET_PTR(schedule->responseBlock, response ? (__bridge_retained void*)[response copy] : NULL);
-    ATOMIC_SET_INT64(schedule->time, time);
-    ATOMIC_SET_INT32(schedule->context, context);
-    ATOMIC_SET_INT32(_head, (_head+1) % kMaximumSchedules);
+    struct _schedule_t *schedule = &_schedule[currentHead];
+    
+    void *currentId    = atomic_load_explicit(&schedule->identifier, memory_order_acquire);
+    void *currentBlock = atomic_load_explicit(&schedule->block, memory_order_acquire);
+    void *currentResp  = atomic_load_explicit(&schedule->responseBlock, memory_order_acquire);
+    atomic_compare_exchange_strong_explicit(&schedule->identifier,
+                                            &currentId,
+                                            (__bridge_retained void*)[(NSObject*)identifier copy],
+                                            memory_order_release,
+                                            memory_order_seq_cst);
+    atomic_compare_exchange_strong_explicit(&schedule->block,
+                                            &currentBlock,
+                                            (__bridge_retained void*)[block copy],
+                                            memory_order_release,
+                                            memory_order_seq_cst);
+    atomic_compare_exchange_strong_explicit(&schedule->responseBlock,
+                                            &currentResp,
+                                            response ? (__bridge_retained void*)[response copy] : NULL,
+                                            memory_order_release,
+                                            memory_order_seq_cst);
+    atomic_store_explicit(&schedule->time, time, memory_order_release);
+    atomic_store_explicit(&schedule->context, context, memory_order_release);
+    atomic_store_explicit(&_head, (currentHead+1) % kMaximumSchedules, memory_order_release);
     [_scheduledIdentifiers addObject:identifier];
 }
 
@@ -143,9 +163,9 @@ struct _schedule_t {
     [_audioController performSynchronousMessageExchangeWithBlock:^{
         for ( int i=0; i<scheduleCount; i++ ) {
             memset(pointers_array[i], 0, sizeof(struct _schedule_t));
-            if ( (pointers_array[i] - _schedule) == _tail ) {
-                while ( !_schedule[_tail].block && _tail != _head ) {
-                    _tail = (_tail + 1) % kMaximumSchedules;
+            if ( (pointers_array[i] - self->_schedule) == self->_tail ) {
+                while ( !self->_schedule[self->_tail].block && self->_tail != self->_head ) {
+                    self->_tail = (self->_tail + 1) % kMaximumSchedules;
                 }
             }
         }
@@ -216,7 +236,7 @@ static void timingReceiver(__unsafe_unretained AEBlockScheduler *THIS,
             memset(&THIS->_schedule[i], 0, sizeof(struct _schedule_t));
             if ( i == THIS->_tail ) {
                 while ( !THIS->_schedule[THIS->_tail].block && THIS->_tail != THIS->_head ) {
-                    ATOMIC_SET_INT32(THIS->_tail, (THIS->_tail + 1) % kMaximumSchedules);
+                    atomic_store_explicit(&THIS->_tail, (THIS->_tail + 1) % kMaximumSchedules, memory_order_release);
                 }
             }
         }

@@ -40,7 +40,7 @@ AudioBufferList *AEAudioBufferListCreate(AudioStreamBasicDescription audioFormat
     if (audio) {
         for ( int i=0; i < numberOfBuffers && bytesPerBuffer; i++ ) {
             void* __nullable bufferData = calloc(bytesPerBuffer, 1);
-            ATOMIC_SET_PTR(audio->mBuffers[i].mData, bufferData);
+            audio->mBuffers[i].mData = bufferData;
             
             if (!bufferData)
             {
@@ -49,10 +49,10 @@ AudioBufferList *AEAudioBufferListCreate(AudioStreamBasicDescription audioFormat
                 return NULL;
             }
             
-            ATOMIC_SET_INT32(audio->mBuffers[i].mDataByteSize, bytesPerBuffer);
-            ATOMIC_SET_INT32(audio->mBuffers[i].mNumberChannels, channelsPerBuffer);
+            audio->mBuffers[i].mDataByteSize = bytesPerBuffer;
+            audio->mBuffers[i].mNumberChannels = channelsPerBuffer;
         }
-        ATOMIC_SET_INT32(audio->mNumberBuffers, numberOfBuffers);
+        audio->mNumberBuffers = numberOfBuffers;
     }
     return audio;
 }
