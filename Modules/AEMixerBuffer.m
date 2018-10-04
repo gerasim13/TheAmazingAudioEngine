@@ -1191,9 +1191,9 @@ static OSStatus sourceInputCallback(void *inRefCon, AudioUnitRenderActionFlags *
     AUGraphIsInitialized(_graph, &isInited);
     if ( !isInited ) {
         AECheckOSStatus(AUGraphInitialize(_graph), "AUGraphInitialize");
-        
-        OSMemoryBarrier();
+        atomic_thread_fence(memory_order_acquire);
         _graphReady = YES;
+        atomic_thread_fence(memory_order_release);
     } else {
         for ( int retries=3; retries > 0; retries-- ) {
             if ( AECheckOSStatus(AUGraphUpdate(_graph, NULL), "AUGraphUpdate") ) {
@@ -1346,8 +1346,9 @@ static void prepareNewSource(__unsafe_unretained AEMixerBuffer *THIS, AEMixerBuf
     int bufferSize = kSourceBufferFrames * (THIS->_clientFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved ? THIS->_clientFormat.mBytesPerFrame * THIS->_clientFormat.mChannelsPerFrame : THIS->_clientFormat.mBytesPerFrame);
     TPCircularBufferInit(&source->buffer, bufferSize);
     
-    OSMemoryBarrier();
+    atomic_thread_fence(memory_order_acquire);
     source->source = sourceID;
+    atomic_thread_fence(memory_order_release);
     [THIS refreshMixingGraph];
 }
 
