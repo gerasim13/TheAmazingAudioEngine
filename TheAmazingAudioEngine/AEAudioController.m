@@ -1873,19 +1873,8 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
         AEFloatConverter *floatConverter = [[AEFloatConverter alloc] initWithSourceFormat:group->channel->audioDescription];
         AudioBufferList *scratchBuffer = AEAudioBufferListCreate(floatConverter.floatingPointAudioDescription, kLevelMonitorScratchBufferSize);
         
-        void            *currentConv    = atomic_load_explicit(&group->level_monitor_data.floatConverter, memory_order_acquire);
-        AudioBufferList *currentScratch = atomic_load_explicit(&group->level_monitor_data.scratchBuffer, memory_order_acquire);
-        atomic_compare_exchange_strong_explicit(&group->level_monitor_data.floatConverter,
-                                                &currentConv,
-                                                (__bridge_retained void*)floatConverter,
-                                                memory_order_release,
-                                                memory_order_seq_cst);
-        atomic_compare_exchange_strong_explicit(&group->level_monitor_data.scratchBuffer,
-                                                &currentScratch,
-                                                scratchBuffer,
-                                                memory_order_release,
-                                                memory_order_seq_cst);
-        
+        atomic_exchange_explicit(&group->level_monitor_data.floatConverter, (__bridge_retained void*)floatConverter, memory_order_release);
+        atomic_exchange_explicit(&group->level_monitor_data.scratchBuffer, scratchBuffer, memory_order_release);
         atomic_store_explicit(&group->level_monitor_data.channels, group->channel->audioDescription.mChannelsPerFrame, memory_order_release);
         atomic_store_explicit(&group->level_monitor_data.monitoringEnabled, 1, memory_order_release);
         
@@ -2708,19 +2697,8 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
         AEChannelRef topChannel = (AEChannelRef)calloc(1, sizeof(channel_t));
         AEChannelGroupRef topGroup = (AEChannelGroupRef)calloc(1, sizeof(channel_group_t));
         topChannel->ptr = topGroup;
-        
-        AEChannelRef      currentChannel = atomic_load_explicit(&_topChannel, memory_order_acquire);
-        AEChannelGroupRef currentGroup   = atomic_load_explicit(&_topGroup, memory_order_acquire);
-        atomic_compare_exchange_strong_explicit(&_topChannel,
-                                                &currentChannel,
-                                                topChannel,
-                                                memory_order_release,
-                                                memory_order_seq_cst);
-        atomic_compare_exchange_strong_explicit(&_topGroup,
-                                                &currentGroup,
-                                                topGroup,
-                                                memory_order_release,
-                                                memory_order_seq_cst);
+        atomic_exchange_explicit(&_topChannel, topChannel, memory_order_release);
+        atomic_exchange_explicit(&_topGroup, topGroup, memory_order_release);
 
         _topChannel->type     = kChannelTypeGroup;
         _topChannel->object   = AEAudioSourceMainOutput;

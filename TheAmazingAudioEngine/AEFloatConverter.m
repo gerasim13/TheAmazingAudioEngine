@@ -155,6 +155,7 @@ BOOL AEFloatConverterToFloat(__unsafe_unretained AEFloatConverter* THIS, AudioBu
 
 BOOL AEFloatConverterToFloatBufferList(__unsafe_unretained AEFloatConverter* THIS, AudioBufferList *sourceBuffer, AudioBufferList *targetBuffer, UInt32 frames) {
     assert(targetBuffer->mNumberBuffers == THIS->_floatAudioDescription.mChannelsPerFrame);
+    if (!targetBuffer->mNumberBuffers) return NO;
     
     float *targetBuffers[targetBuffer->mNumberBuffers];
     for ( int i=0; i<targetBuffer->mNumberBuffers; i++ ) {

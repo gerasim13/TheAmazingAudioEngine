@@ -113,25 +113,9 @@ struct _schedule_t {
     }
     
     struct _schedule_t *schedule = &_schedule[currentHead];
-    
-    void *currentId    = atomic_load_explicit(&schedule->identifier, memory_order_acquire);
-    void *currentBlock = atomic_load_explicit(&schedule->block, memory_order_acquire);
-    void *currentResp  = atomic_load_explicit(&schedule->responseBlock, memory_order_acquire);
-    atomic_compare_exchange_strong_explicit(&schedule->identifier,
-                                            &currentId,
-                                            (__bridge_retained void*)[(NSObject*)identifier copy],
-                                            memory_order_release,
-                                            memory_order_seq_cst);
-    atomic_compare_exchange_strong_explicit(&schedule->block,
-                                            &currentBlock,
-                                            (__bridge_retained void*)[block copy],
-                                            memory_order_release,
-                                            memory_order_seq_cst);
-    atomic_compare_exchange_strong_explicit(&schedule->responseBlock,
-                                            &currentResp,
-                                            response ? (__bridge_retained void*)[response copy] : NULL,
-                                            memory_order_release,
-                                            memory_order_seq_cst);
+    atomic_exchange_explicit(&schedule->identifier, (__bridge_retained void*)[(NSObject*)identifier copy], memory_order_release);
+    atomic_exchange_explicit(&schedule->block, (__bridge_retained void*)[block copy], memory_order_release);
+    atomic_exchange_explicit(&schedule->responseBlock, response ? (__bridge_retained void*)[response copy] : NULL, memory_order_release);
     atomic_store_explicit(&schedule->time, time, memory_order_release);
     atomic_store_explicit(&schedule->context, context, memory_order_release);
     atomic_store_explicit(&_head, (currentHead+1) % kMaximumSchedules, memory_order_release);
