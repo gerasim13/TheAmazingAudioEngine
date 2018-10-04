@@ -113,9 +113,9 @@ struct _schedule_t {
     }
     
     struct _schedule_t *schedule = &_schedule[currentHead];
-    atomic_exchange_explicit(&schedule->identifier, (__bridge_retained void*)[(NSObject*)identifier copy], memory_order_release);
-    atomic_exchange_explicit(&schedule->block, (__bridge_retained void*)[block copy], memory_order_release);
-    atomic_exchange_explicit(&schedule->responseBlock, response ? (__bridge_retained void*)[response copy] : NULL, memory_order_release);
+    CFBridgingRelease(atomic_exchange_explicit(&schedule->identifier, (void*)CFBridgingRetain([(NSObject*)identifier copy]), memory_order_release));
+    CFBridgingRelease(atomic_exchange_explicit(&schedule->block, (void*)CFBridgingRetain([block copy]), memory_order_release));
+    CFBridgingRelease(atomic_exchange_explicit(&schedule->responseBlock, response ? (void*)CFBridgingRetain([response copy]) : NULL, memory_order_release));
     atomic_store_explicit(&schedule->time, time, memory_order_release);
     atomic_store_explicit(&schedule->context, context, memory_order_release);
     atomic_store_explicit(&_head, (currentHead+1) % kMaximumSchedules, memory_order_release);

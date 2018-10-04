@@ -716,7 +716,7 @@ static void serviceAudioInput(__unsafe_unretained AEAudioController * THIS,
             result = inputAudioProducer((void*)&arg, audioBufferList, &inNumberFrames);
             
             // Pass audio to callbacks
-            for ( int i=0; i<entry->callbacks.count; i++ ) {
+            for ( int i=0; i<entry->callbacks.count && result == noErr; i++ ) {
                 callback_t *callback = &entry->callbacks.callbacks[i];
                 if ( !(callback->flags & kReceiverFlag) ) continue;
                 
@@ -1825,19 +1825,9 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
     if ( !group->level_monitor_data.monitoringEnabled ) {
         AEFloatConverter *floatConverter = [[AEFloatConverter alloc] initWithSourceFormat:group->channel->audioDescription];
         AudioBufferList *scratchBuffer = AEAudioBufferListCreate(floatConverter.floatingPointAudioDescription, kLevelMonitorScratchBufferSize);
-        
-        void            *currentConv    = atomic_load_explicit(&group->level_monitor_data.floatConverter, memory_order_acquire);
-        AudioBufferList *currentScratch = atomic_load_explicit(&group->level_monitor_data.scratchBuffer, memory_order_acquire);
-        atomic_compare_exchange_strong_explicit(&group->level_monitor_data.floatConverter,
-                                                &currentConv,
-                                                (__bridge_retained void*)floatConverter,
-                                                memory_order_release,
-                                                memory_order_seq_cst);
-        atomic_compare_exchange_strong_explicit(&group->level_monitor_data.scratchBuffer,
-                                                &currentScratch,
-                                                scratchBuffer,
-                                                memory_order_release,
-                                                memory_order_seq_cst);
+        AudioBufferList *oldScratch = atomic_exchange_explicit(&group->level_monitor_data.scratchBuffer, scratchBuffer, memory_order_release);
+        CFBridgingRelease(atomic_exchange_explicit(&group->level_monitor_data.floatConverter, (void*)CFBridgingRetain(floatConverter), memory_order_release));
+        if (oldScratch) AEAudioBufferListFree(oldScratch);
         
         atomic_store_explicit(&group->level_monitor_data.channels, group->channel->audioDescription.mChannelsPerFrame, memory_order_release);
         atomic_store_explicit(&group->level_monitor_data.monitoringEnabled, 1, memory_order_release);
@@ -1872,9 +1862,10 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
     if ( !group->level_monitor_data.monitoringEnabled ) {
         AEFloatConverter *floatConverter = [[AEFloatConverter alloc] initWithSourceFormat:group->channel->audioDescription];
         AudioBufferList *scratchBuffer = AEAudioBufferListCreate(floatConverter.floatingPointAudioDescription, kLevelMonitorScratchBufferSize);
+        AudioBufferList *oldScratch = atomic_exchange_explicit(&group->level_monitor_data.scratchBuffer, scratchBuffer, memory_order_release);
+        CFBridgingRelease(atomic_exchange_explicit(&group->level_monitor_data.floatConverter, (void*)CFBridgingRetain(floatConverter), memory_order_release));
+        if (oldScratch) AEAudioBufferListFree(oldScratch);
         
-        atomic_exchange_explicit(&group->level_monitor_data.floatConverter, (__bridge_retained void*)floatConverter, memory_order_release);
-        atomic_exchange_explicit(&group->level_monitor_data.scratchBuffer, scratchBuffer, memory_order_release);
         atomic_store_explicit(&group->level_monitor_data.channels, group->channel->audioDescription.mChannelsPerFrame, memory_order_release);
         atomic_store_explicit(&group->level_monitor_data.monitoringEnabled, 1, memory_order_release);
         
