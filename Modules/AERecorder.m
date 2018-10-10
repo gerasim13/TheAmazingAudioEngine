@@ -26,6 +26,7 @@
 #import "AERecorder.h"
 #import "AEMixerBuffer.h"
 #import "AEAudioFileWriter.h"
+#import <stdatomic.h>
 
 #define kProcessChunkSize 8192
 
@@ -34,13 +35,17 @@ NSString * kAERecorderErrorKey = @"error";
 
 @interface AERecorder () {
     AudioBufferList *_buffer;
+    atomic_bool      _recording;
 }
 @property (nonatomic, strong) AEMixerBuffer *mixer;
 @property (nonatomic, strong) AEAudioFileWriter *writer;
 @end
 
 @implementation AERecorder
-@synthesize mixer = _mixer, writer = _writer, currentTime = _currentTime;
+@synthesize mixer = _mixer;
+@synthesize writer = _writer;
+@synthesize currentTime = _currentTime;
+@dynamic recording;
 @dynamic path;
 
 + (BOOL)AACEncodingAvailable {
@@ -76,7 +81,7 @@ NSString * kAERecorderErrorKey = @"error";
 - (BOOL)beginRecordingToFileAtPath:(NSString*)path fileType:(AudioFileTypeID)fileType bitDepth:(UInt32)bits channels:(UInt32)channels error:(NSError**)error
 {
     BOOL result = [self prepareRecordingToFileAtPath:path fileType:fileType bitDepth:bits channels:channels error:error];
-    _recording = YES;
+    atomic_store_explicit(&_recording, YES, memory_order_release);
     return result;
 }
 
@@ -102,15 +107,15 @@ NSString * kAERecorderErrorKey = @"error";
 }
 
 void AERecorderStartRecording(__unsafe_unretained AERecorder* THIS) {
-    THIS->_recording = YES;
+    atomic_store_explicit(&THIS->_recording, YES, memory_order_release);
 }
 
 void AERecorderStopRecording(__unsafe_unretained AERecorder* THIS) {
-    THIS->_recording = NO;
+    atomic_store_explicit(&THIS->_recording, NO, memory_order_release);
 }
 
 - (void)finishRecording {
-    _recording = NO;
+    atomic_store_explicit(&_recording, NO, memory_order_release);
     [_writer finishWriting];
 }
 
@@ -137,7 +142,7 @@ static void audioCallback(__unsafe_unretained AERecorder *THIS,
                           const AudioTimeStamp       *time,
                           UInt32                      frames,
                           AudioBufferList            *audio) {
-    if ( !THIS->_recording ) return;
+    if ( !atomic_load_explicit(&THIS->_recording, memory_order_acquire) ) return;
     
     AEMixerBufferEnqueue(THIS->_mixer, source, audio, frames, time);
     
@@ -154,7 +159,7 @@ static void audioCallback(__unsafe_unretained AERecorder *THIS,
         THIS->_currentTime += AEConvertFramesToSeconds(audioController, bufferLength);
         OSStatus status = AEAudioFileWriterAddAudio(THIS->_writer, THIS->_buffer, bufferLength);
         if ( status != noErr ) {
-            THIS->_recording = NO;
+            atomic_store_explicit(&THIS->_recording, NO, memory_order_release);
             AEAudioControllerSendAsynchronousMessageToMainThread(audioController, 
                                                                  reportError, 
                                                                  &(struct reportError_t) { .THIS = (__bridge void*)THIS, .result = status },
@@ -165,6 +170,16 @@ static void audioCallback(__unsafe_unretained AERecorder *THIS,
 
 -(AEAudioReceiverCallback)receiverCallback {
     return audioCallback;
+}
+
+- (BOOL)recording
+{
+    return atomic_load_explicit(&_recording, memory_order_acquire);
+}
+
+- (void)setRecording:(BOOL)recording
+{
+    atomic_store_explicit(&_recording, recording, memory_order_release);
 }
 
 @end

@@ -30,6 +30,7 @@
 #import "AEAudioFilePlayer.h"
 #import "AEUtilities.h"
 #import <libkern/OSAtomic.h>
+#import <stdatomic.h>
 
 @interface AEAudioFilePlayer () {
     AudioFileID _audioFile;
@@ -40,7 +41,8 @@
     NSTimeInterval _regionStartTime;
     volatile int32_t _playhead;
     volatile int32_t _playbackStoppedCallbackScheduled;
-    BOOL _running;
+    atomic_bool _running;
+    atomic_bool _loop;
     uint64_t _startTime;
     AEAudioRenderCallback _superRenderCallback;
 }
@@ -49,6 +51,7 @@
 @end
 
 @implementation AEAudioFilePlayer
+@dynamic loop;
 
 + (instancetype)audioFilePlayerWithURL:(NSURL *)url error:(NSError **)error {
     return [[self alloc] initWithURL:url error:error];
@@ -91,7 +94,7 @@
     if ( self.channelIsPlaying ) {
         double outputToSourceSampleRateScale = _fileDescription.mSampleRate / _outputDescription.mSampleRate;
         [self schedulePlayRegionFromPosition:_playhead * outputToSourceSampleRateScale];
-        _running = YES;
+        atomic_store_explicit(&_running, YES, memory_order_release);
     }
 }
 
@@ -109,6 +112,16 @@
     if ( !self.channelIsPlaying ) {
         self.channelIsPlaying = YES;
     }
+}
+
+- (BOOL)loop
+{
+    return atomic_load_explicit(&_loop, memory_order_acquire);
+}
+
+- (void)setLoop:(BOOL)loop
+{
+    atomic_store_explicit(&_loop, loop, memory_order_release);
 }
 
 - (NSTimeInterval)duration {
@@ -133,7 +146,7 @@
     
     if ( wasPlaying == playing ) return;
     
-    _running = playing;
+    atomic_store_explicit(&_running, playing, memory_order_release);
     if ( self.audioUnit ) {
         if ( playing ) {
             double outputToSourceSampleRateScale = _fileDescription.mSampleRate / _outputDescription.mSampleRate;
@@ -333,7 +346,7 @@ static OSStatus renderCallback(__unsafe_unretained AEAudioFilePlayer *THIS,
                                UInt32                      frames,
                                AudioBufferList            *audio) {
     
-    if ( !THIS->_running ) return noErr;
+    if ( !atomic_load_explicit(&THIS->_running, memory_order_acquire) ) return noErr;
     
     uint64_t hostTimeAtBufferEnd = time->mHostTime + AEHostTicksFromSeconds((double)frames / THIS->_outputDescription.mSampleRate);
     if ( THIS->_startTime && THIS->_startTime > hostTimeAtBufferEnd ) {
@@ -371,7 +384,8 @@ static OSStatus renderCallback(__unsafe_unretained AEAudioFilePlayer *THIS,
     UInt32 regionLengthInFrames = ceil(THIS->_regionDuration * THIS->_outputDescription.mSampleRate);
     UInt32 regionStartTimeInFrames = ceil(THIS->_regionStartTime * THIS->_outputDescription.mSampleRate);
     
-    if ( playhead - regionStartTimeInFrames + frames >= regionLengthInFrames && !THIS->_loop ) {
+    if ( playhead - regionStartTimeInFrames + frames >= regionLengthInFrames &&
+        !atomic_load_explicit(&THIS->_loop, memory_order_acquire) ) {
         // We just crossed the loop boundary; if not looping, end the track.
         UInt32 finalFrames = MIN(regionLengthInFrames - (playhead - regionStartTimeInFrames), frames);
         for ( int i=0; i<audio->mNumberBuffers; i++) {
@@ -388,7 +402,7 @@ static OSStatus renderCallback(__unsafe_unretained AEAudioFilePlayer *THIS,
             AEAudioControllerSendAsynchronousMessageToMainThread(THIS->_audioController, AEAudioFilePlayerNotifyCompletion, &THIS, sizeof(AEAudioFilePlayer*));
         }
         
-        THIS->_running = NO;
+        atomic_store_explicit(&THIS->_running, NO, memory_order_release);
     }
     
     // Update the playhead

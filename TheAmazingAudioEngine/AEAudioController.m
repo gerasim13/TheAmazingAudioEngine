@@ -172,7 +172,7 @@ typedef struct __channel_t {
     void            *ptr;
     void            *object;
     AEChannelGroupRef parentGroup;
-    BOOL             playing;
+    atomic_bool      playing;
     float            volume;
     float            pan;
     BOOL             muted;
@@ -196,9 +196,9 @@ typedef struct _channel_group_t {
     AUNode              mixerNode;
     AudioUnit           mixerAudioUnit;
     AEChannelRef        channels[kMaximumChannelsPerGroup];
-    int                 channelCount;
     AUNode              converterNode;
     AudioUnit           converterUnit;
+    atomic_int_fast32_t channelCount;
     audio_level_monitor_t level_monitor_data;
 } channel_group_t;
 
@@ -373,7 +373,7 @@ static OSStatus renderCallback(void *inRefCon, AudioUnitRenderActionFlags *ioAct
     
     __unsafe_unretained AEAudioController * THIS = (__bridge AEAudioController*)channel->audioController;
 
-    if ( channel == NULL || channel->ptr == NULL || !channel->playing ) {
+    if ( channel == NULL || channel->ptr == NULL || !atomic_load_explicit(&channel->playing, memory_order_acquire) ) {
         *ioActionFlags |= kAudioUnitRenderAction_OutputIsSilence;
         for ( int i=0; i<ioData->mNumberBuffers; i++ ) memset(ioData->mBuffers[i].mData, 0, ioData->mBuffers[i].mDataByteSize);
         return noErr;
@@ -1191,7 +1191,7 @@ static OSStatus ioUnitRenderNotifyCallback(void *inRefCon, AudioUnitRenderAction
     
     // Add to group's channel array
     for ( id<AEAudioPlayable> channel in channels ) {
-        if ( group->channelCount == kMaximumChannelsPerGroup ) {
+        if ( atomic_load_explicit(&group->channelCount, memory_order_acquire) == kMaximumChannelsPerGroup ) {
             NSLog(@"TAAE: Warning: Channel limit reached");
             break;
         }
@@ -1209,10 +1209,12 @@ static OSStatus ioUnitRenderNotifyCallback(void *inRefCon, AudioUnitRenderAction
         channelElement->ptr         = channel.renderCallback;
         channelElement->object      = (__bridge_retained void*)channel;
         channelElement->parentGroup = group;
-        channelElement->playing     = [channel respondsToSelector:@selector(channelIsPlaying)] ? channel.channelIsPlaying : YES;
         channelElement->volume      = [channel respondsToSelector:@selector(volume)] ? channel.volume : 1.0;
         channelElement->pan         = [channel respondsToSelector:@selector(pan)] ? channel.pan : 0.0;
         channelElement->muted       = [channel respondsToSelector:@selector(channelIsMuted)] ? channel.channelIsMuted : NO;
+        atomic_store_explicit(&channelElement->playing,
+                              [channel respondsToSelector:@selector(channelIsPlaying)] ? channel.channelIsPlaying : YES,
+                              memory_order_release);
         if ( [channel respondsToSelector:@selector(audioDescription)] && channel.audioDescription.mSampleRate ) {
             channelElement->audioDescription = channel.audioDescription;
         }
@@ -1220,7 +1222,7 @@ static OSStatus ioUnitRenderNotifyCallback(void *inRefCon, AudioUnitRenderAction
         channelElement->audioController = (__bridge void*)self;
         
         [self performAsynchronousMessageExchangeWithBlock:^{
-            group->channels[group->channelCount++] = channelElement;
+            group->channels[atomic_fetch_add_explicit(&group->channelCount, 1, memory_order_release)] = channelElement;
         } responseBlock:nil];
     }
 
@@ -1281,7 +1283,7 @@ static OSStatus ioUnitRenderNotifyCallback(void *inRefCon, AudioUnitRenderAction
         AECheckOSStatus([self updateGraph], "Update graph");
         
         // Set new bus count of group
-        UInt32 busCount = group->channelCount;
+        UInt32 busCount = atomic_load_explicit(&group->channelCount, memory_order_acquire);
         if ( !AECheckOSStatus(AudioUnitSetProperty(group->mixerAudioUnit, kAudioUnitProperty_ElementCount, kAudioUnitScope_Input, 0, &busCount, sizeof(busCount)),
                           "AudioUnitSetProperty(kAudioUnitProperty_ElementCount)") ) return;
         
@@ -1334,7 +1336,7 @@ static OSStatus ioUnitRenderNotifyCallback(void *inRefCon, AudioUnitRenderAction
 
 - (NSArray*)channelsInChannelGroup:(AEChannelGroupRef)group {
     NSMutableArray *channels = [NSMutableArray array];
-    for ( int i=0; i<group->channelCount; i++ ) {
+    for ( int i=0; i<atomic_load_explicit(&group->channelCount, memory_order_relaxed); i++ ) {
         if ( group->channels[i] && group->channels[i]->type == kChannelTypeChannel ) {
             [channels addObject:(__bridge id)group->channels[i]->object];
         }
@@ -1348,7 +1350,7 @@ static OSStatus ioUnitRenderNotifyCallback(void *inRefCon, AudioUnitRenderAction
 }
 
 - (AEChannelGroupRef)createChannelGroupWithinChannelGroup:(AEChannelGroupRef)parentGroup {
-    if ( parentGroup->channelCount == kMaximumChannelsPerGroup ) {
+    if ( atomic_load_explicit(&parentGroup->channelCount, memory_order_acquire) == kMaximumChannelsPerGroup ) {
         NSLog(@"TAAE: Maximum channels reached in group %p\n", parentGroup);
         return NULL;
     }
@@ -1362,19 +1364,19 @@ static OSStatus ioUnitRenderNotifyCallback(void *inRefCon, AudioUnitRenderAction
     channel->type    = kChannelTypeGroup;
     channel->ptr     = group;
     channel->parentGroup = parentGroup;
-    channel->playing = YES;
     channel->volume  = 1.0;
     channel->pan     = 0.0;
     channel->muted   = NO;
+    atomic_store_explicit(&channel->playing, YES, memory_order_release);
     channel->audioController = (__bridge void *)self;
     group->channel   = channel;
     
     [self performAsynchronousMessageExchangeWithBlock:^{
-        parentGroup->channels[parentGroup->channelCount] = channel;
-        parentGroup->channelCount++;
+        parentGroup->channels[atomic_load_explicit(&parentGroup->channelCount, memory_order_acquire)] = channel;
+        atomic_fetch_add_explicit(&parentGroup->channelCount, 1, memory_order_release);
     } responseBlock:^{
         // Set bus count
-        UInt32 busCount = parentGroup->channelCount;
+        UInt32 busCount = atomic_load_explicit(&parentGroup->channelCount, memory_order_acquire);
         OSStatus result = AudioUnitSetProperty(parentGroup->mixerAudioUnit, kAudioUnitProperty_ElementCount, kAudioUnitScope_Input, 0, &busCount, sizeof(busCount));
         if ( AECheckOSStatus(result, "AudioUnitSetProperty(kAudioUnitProperty_ElementCount)") ) {
             [self configureChannelsForGroup:parentGroup];
@@ -1391,7 +1393,7 @@ static OSStatus ioUnitRenderNotifyCallback(void *inRefCon, AudioUnitRenderAction
 
 - (NSArray*)channelGroupsInChannelGroup:(AEChannelGroupRef)group {
     NSMutableArray *groups = [NSMutableArray array];
-    for ( int i=0; i<group->channelCount; i++ ) {
+    for ( int i=0; i<atomic_load_explicit(&group->channelCount, memory_order_relaxed); i++ ) {
         if ( group->channels[i] && group->channels[i]->type == kChannelTypeGroup ) {
             [groups addObject:[NSValue valueWithPointer:group->channels[i]->ptr]];
         }
@@ -1431,14 +1433,14 @@ static OSStatus ioUnitRenderNotifyCallback(void *inRefCon, AudioUnitRenderAction
     int index;
     AEChannelGroupRef parentGroup = [self searchForGroupContainingChannelMatchingPtr:group userInfo:NULL index:&index];
     NSAssert(parentGroup != NULL, @"Channel not found");
-    group->channel->playing = playing;
-    AudioUnitParameterValue value = group->channel->playing;
+    atomic_store_explicit(&group->channel->playing, playing, memory_order_release);
+    AudioUnitParameterValue value = atomic_load_explicit(&group->channel->playing, memory_order_acquire);
     OSStatus result = AudioUnitSetParameter(parentGroup->mixerAudioUnit, kMultiChannelMixerParam_Enable, kAudioUnitScope_Input, index, value, 0);
     AECheckOSStatus(result, "AudioUnitSetParameter(kMultiChannelMixerParam_Enable)");
 }
 
 -(BOOL)channelGroupIsPlaying:(AEChannelGroupRef)group {
-    return group->channel->playing;
+    return atomic_load_explicit(&group->channel->playing, memory_order_acquire);
 }
 
 - (void)setMuted:(BOOL)muted forChannelGroup:(AEChannelGroupRef)group {
@@ -2323,7 +2325,7 @@ AudioTimeStamp AEAudioControllerCurrentAudioTimestamp(__unsafe_unretained AEAudi
             }
 
         } else if ( [keyPath isEqualToString:@"channelIsPlaying"] ) {
-            channelElement->playing = channel.channelIsPlaying;
+            atomic_store_explicit(&channelElement->playing, channel.channelIsPlaying, memory_order_release);
             AudioUnitParameterValue value = channel.channelIsPlaying;
             
             if ( group->mixerAudioUnit ) {
@@ -2331,7 +2333,7 @@ AudioTimeStamp AEAudioControllerCurrentAudioTimestamp(__unsafe_unretained AEAudi
                 AECheckOSStatus(result, "AudioUnitSetParameter(kMultiChannelMixerParam_Enable)");
             }
             
-            group->channels[index]->playing = value;
+            atomic_store_explicit(&group->channels[index]->playing, value, memory_order_release);
             
         }  else if ( [keyPath isEqualToString:@"channelIsMuted"] ) {
             channelElement->muted = channel.channelIsMuted;
@@ -2693,10 +2695,10 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
 
         _topChannel->type     = kChannelTypeGroup;
         _topChannel->object   = AEAudioSourceMainOutput;
-        _topChannel->playing  = YES;
         _topChannel->volume   = 1.0;
         _topChannel->pan      = 0.0;
         _topChannel->muted    = NO;
+        atomic_store_explicit(&_topChannel->playing, YES, memory_order_release);
         _topChannel->audioController = (__bridge void *)self;
         _topGroup->channel   = _topChannel;
         
@@ -3451,7 +3453,7 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
         UInt32 size = sizeof(priorBusCount);
         AECheckOSStatus(AudioUnitGetProperty(group->mixerAudioUnit, kAudioUnitProperty_ElementCount, kAudioUnitScope_Input, 0, &priorBusCount, &size), "AudioUnitGetProperty(kAudioUnitProperty_ElementCount)");
         
-        UInt32 busCount = group->channelCount;
+        UInt32 busCount = atomic_load_explicit(&group->channelCount, memory_order_acquire);
         AECheckOSStatus(AudioUnitSetProperty(group->mixerAudioUnit, kAudioUnitProperty_ElementCount, kAudioUnitScope_Input, 0, &busCount, sizeof(busCount)), "AudioUnitSetProperty(kAudioUnitProperty_ElementCount)");
     }
     
@@ -3460,7 +3462,7 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
     AUNodeInteraction interactions[numInteractions];
     AECheckOSStatus(AUGraphGetNodeInteractions(_audioGraph, group ? group->mixerNode : _ioNode, &numInteractions, interactions), "AUGraphGetNodeInteractions");
     
-    for ( int i = 0; i < (group ? MAX(group->channelCount, priorBusCount) : 1); i++ ) {
+    for ( int i = 0; i < (group ? MAX(atomic_load_explicit(&group->channelCount, memory_order_relaxed), priorBusCount) : 1); i++ ) {
         AEChannelRef channel = group ? group->channels[i] : _topChannel;
         
         // Find the existing upstream connection
@@ -3537,7 +3539,7 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
             }
             
             // Set bus count
-            UInt32 busCount = subgroup->channelCount;
+            UInt32 busCount = atomic_load_explicit(&subgroup->channelCount, memory_order_acquire);
             if ( !AECheckOSStatus(AudioUnitSetProperty(subgroup->mixerAudioUnit, kAudioUnitProperty_ElementCount, kAudioUnitScope_Input, 0, &busCount, sizeof(busCount)), "AudioUnitSetProperty(kAudioUnitProperty_ElementCount)") ) continue;
 
             // Get current mixer's output format
@@ -3684,24 +3686,36 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
         if ( group ) {
             // Set volume
             AudioUnitParameterValue volumeValue = channel->muted ? 0.0 : channel->volume;
-            AECheckOSStatus(AudioUnitSetParameter(group->mixerAudioUnit, kMultiChannelMixerParam_Volume, kAudioUnitScope_Input, i, volumeValue, 0),
-                        "AudioUnitSetParameter(kMultiChannelMixerParam_Volume)");
+            AECheckOSStatus(AudioUnitSetParameter(group->mixerAudioUnit,
+                                                  kMultiChannelMixerParam_Volume,
+                                                  kAudioUnitScope_Input,
+                                                  i, volumeValue, 0),
+                            "AudioUnitSetParameter(kMultiChannelMixerParam_Volume)");
             
             // Set pan
             AudioUnitParameterValue panValue = channel->pan;
-            AECheckOSStatus(AudioUnitSetParameter(group->mixerAudioUnit, kMultiChannelMixerParam_Pan, kAudioUnitScope_Input, i, panValue, 0),
-                        "AudioUnitSetParameter(kMultiChannelMixerParam_Pan)");
+            AECheckOSStatus(AudioUnitSetParameter(group->mixerAudioUnit,
+                                                  kMultiChannelMixerParam_Pan,
+                                                  kAudioUnitScope_Input,
+                                                  i, panValue, 0),
+                            "AudioUnitSetParameter(kMultiChannelMixerParam_Pan)");
             
             // Set enabled
-            AudioUnitParameterValue enabledValue = channel->playing;
-            AECheckOSStatus(AudioUnitSetParameter(group->mixerAudioUnit, kMultiChannelMixerParam_Enable, kAudioUnitScope_Input, i, enabledValue, 0),
-                        "AudioUnitSetParameter(kMultiChannelMixerParam_Enable)");
+            AudioUnitParameterValue enabledValue = atomic_load_explicit(&channel->playing, memory_order_acquire);
+            AECheckOSStatus(AudioUnitSetParameter(group->mixerAudioUnit,
+                                                  kMultiChannelMixerParam_Enable,
+                                                  kAudioUnitScope_Input,
+                                                  i, enabledValue, 0),
+                            "AudioUnitSetParameter(kMultiChannelMixerParam_Enable)");
             
             if ( upstreamInteraction.nodeInteractionType == kAUNodeInteraction_InputCallback ) {
                 // Set audio description
                 AudioStreamBasicDescription audioDescription = channel->audioDescription.mSampleRate ? channel->audioDescription : _audioDescription;
-                AECheckOSStatus(AudioUnitSetProperty(group->mixerAudioUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, i, &audioDescription, sizeof(audioDescription)),
-                            "AudioUnitSetProperty(kAudioUnitProperty_StreamFormat)");
+                AECheckOSStatus(AudioUnitSetProperty(group->mixerAudioUnit,
+                                                     kAudioUnitProperty_StreamFormat,
+                                                     kAudioUnitScope_Input,
+                                                     i, &audioDescription, sizeof(audioDescription)),
+                                "AudioUnitSetProperty(kAudioUnitProperty_StreamFormat)");
             }
         }
     }
@@ -3712,7 +3726,7 @@ static void removeChannelsFromGroup(__unsafe_unretained AEAudioController *THIS,
     for ( int i=0; i < count; i++ ) {
         // Find the channel in our fixed array
         int index = 0;
-        for ( index=0; index < group->channelCount; index++ ) {
+        for ( index=0; index < atomic_load_explicit(&group->channelCount, memory_order_relaxed); index++ ) {
             if ( group->channels[index] && group->channels[index]->ptr == ptrs[i] && group->channels[index]->object == objects[i] ) {
                 // Mute this channel until we update the graph
                 AudioUnitParameterValue enabledValue = 0;
@@ -3728,26 +3742,26 @@ static void removeChannelsFromGroup(__unsafe_unretained AEAudioController *THIS,
         
         // Find the channel in our channel array
         int index = 0;
-        for ( index=0; index < group->channelCount; index++ ) {
+        for ( index=0; index < atomic_load_explicit(&group->channelCount, memory_order_relaxed); index++ ) {
             if ( group->channels[index] && group->channels[index]->ptr == ptrs[i] && group->channels[index]->object == objects[i] ) {
                 if ( outChannelReferences && outChannelReferencesCount < count ) {
                     outChannelReferences[outChannelReferencesCount++] = group->channels[index];
                 }
                 
                 // Shuffle the later elements backwards one space
-                for ( int j=index; j<group->channelCount-1; j++ ) {
+                for ( int j=index; j<atomic_load_explicit(&group->channelCount, memory_order_relaxed)-1; j++ ) {
                     group->channels[j] = group->channels[j+1];
                 }
                 
-                group->channels[group->channelCount-1] = NULL;
-                group->channelCount--;
+                group->channels[atomic_load_explicit(&group->channelCount, memory_order_acquire)-1] = NULL;
+                atomic_fetch_sub_explicit(&group->channelCount, 1, memory_order_release);
             }
         }
     }
 }
 
 - (void)gatherChannelsFromGroup:(AEChannelGroupRef)group intoArray:(NSMutableArray*)array {
-    for ( int i=0; i<group->channelCount; i++ ) {
+    for ( int i=0; i<atomic_load_explicit(&group->channelCount, memory_order_relaxed); i++ ) {
         AEChannelRef channel = group->channels[i];
         if ( !channel ) continue;
         if ( channel->type == kChannelTypeGroup ) {
@@ -3760,7 +3774,7 @@ static void removeChannelsFromGroup(__unsafe_unretained AEAudioController *THIS,
 
 - (AEChannelGroupRef)searchForGroupContainingChannelMatchingPtr:(void*)ptr userInfo:(void*)userInfo withinGroup:(AEChannelGroupRef)group index:(int*)index {
     // Find the matching channel in the table for the given group
-    for ( int i=0; i < group->channelCount; i++ ) {
+    for ( int i=0; i < atomic_load_explicit(&group->channelCount, memory_order_relaxed); i++ ) {
         AEChannelRef channel = group->channels[i];
         if ( !channel ) continue;
         if ( channel->ptr == ptr && channel->object == userInfo ) {
@@ -3782,7 +3796,7 @@ static void removeChannelsFromGroup(__unsafe_unretained AEAudioController *THIS,
 
 - (void)iterateChannelsBeneathGroup:(AEChannelGroupRef)group block:(void(^)(AEChannelRef channel))block {
     block(group->channel);
-    for ( int i=0; i<group->channelCount; i++ ) {
+    for ( int i=0; i<atomic_load_explicit(&group->channelCount, memory_order_relaxed); i++ ) {
         if ( group->channels[i] ) {
             if ( group->channels[i]->type == kChannelTypeChannel ) {
                 block(group->channels[i]);
@@ -3879,7 +3893,7 @@ static void removeChannelsFromGroup(__unsafe_unretained AEAudioController *THIS,
     }
     
     // Release channel resources too
-    for ( int i=0; i<group->channelCount; i++ ) {
+    for ( int i=0; i<atomic_load_explicit(&group->channelCount, memory_order_relaxed); i++ ) {
         if ( group->channels[i] ) {
             [self releaseResourcesForChannel:group->channels[i]];
         }
@@ -3904,7 +3918,7 @@ static void removeChannelsFromGroup(__unsafe_unretained AEAudioController *THIS,
     }
     memset(&group->level_monitor_data, 0, sizeof(audio_level_monitor_t));
     
-    for ( int i=0; i<group->channelCount; i++ ) {
+    for ( int i=0; i<atomic_load_explicit(&group->channelCount, memory_order_relaxed); i++ ) {
         AEChannelRef channel = group->channels[i];
         if ( !channel ) continue;
         channel->setRenderNotification = NO;

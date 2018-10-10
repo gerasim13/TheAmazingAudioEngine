@@ -31,6 +31,7 @@
 #import <libkern/OSAtomic.h>
 #import <Accelerate/Accelerate.h>
 #import <pthread.h>
+#import <stdatomic.h>
 
 #ifdef DEBUG
 #define dprintf(THIS, n, __FORMAT__, ...) {if ( THIS->_debugLevel >= (n) ) { printf("<AEMixerBuffer %p>: "__FORMAT__ "\n", THIS, ##__VA_ARGS__); }}
@@ -39,7 +40,7 @@
 #endif
 
 typedef struct {
-    AEMixerBufferSource                     source;
+    AEMixerBufferSource             _Atomic source;
     AEMixerBufferSourcePeekCallback         peekCallback;
     AEMixerBufferSourceRenderCallback       renderCallback;
     void                                   *callbackUserinfo;
@@ -1347,7 +1348,7 @@ static void prepareNewSource(__unsafe_unretained AEMixerBuffer *THIS, AEMixerBuf
     TPCircularBufferInit(&source->buffer, bufferSize);
     
     atomic_thread_fence(memory_order_acquire);
-    source->source = sourceID;
+    atomic_exchange_explicit(&source->source, sourceID, memory_order_release);
     atomic_thread_fence(memory_order_release);
     [THIS refreshMixingGraph];
 }
