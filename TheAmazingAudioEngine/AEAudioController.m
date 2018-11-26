@@ -1457,16 +1457,38 @@ static OSStatus ioUnitRenderNotifyCallback(void *inRefCon, AudioUnitRenderAction
     return group->channel->muted;
 }
 
-BOOL AEAudioControllerRenderMainOutput(AEAudioController *audioController, AudioTimeStamp inTimeStamp, UInt32 inNumberFrames, AudioBufferList *ioData) {
+BOOL AEAudioControllerRenderBus(AEAudioController *audioController,
+                                AEChannelGroupRef channelGroup,
+                                AudioTimeStamp inTimeStamp,
+                                UInt32 inNumberFrames,
+                                AudioBufferList *ioData)
+{
+    BOOL automaticLatencyManagement = audioController->_automaticLatencyManagement;
+    BOOL inputEnabled = audioController->_inputEnabled;
+    audioController->_automaticLatencyManagement = NO;
+    audioController->_inputEnabled = NO;
+    
+    AudioUnitRenderActionFlags flags = kAudioUnitRenderAction_PreRender;
+    topRenderNotifyCallback((__bridge void *)(audioController), &flags, &inTimeStamp, 2, inNumberFrames, ioData);
+    // Produce audio
     channel_producer_arg_t arg = {
-        .channel = audioController->_topChannel,
-        .inTimeStamp = inTimeStamp,
+        .channel = channelGroup->channel,
+        .timeStamp = inTimeStamp,
+        .originalTimeStamp = inTimeStamp,
         .ioActionFlags = 0,
         .nextFilterIndex = 0
     };
     OSStatus result = channelAudioProducer((void*)&arg, ioData, &inNumberFrames);
-    handleCallbacksForChannel(arg.channel, &inTimeStamp, inNumberFrames, ioData);
-    return result;
+    handleCallbacksForChannel(arg.channel, &arg.timeStamp, arg.ioActionFlags, inNumberFrames, ioData);
+    
+    audioController->_automaticLatencyManagement = automaticLatencyManagement;
+    audioController->_inputEnabled = inputEnabled;
+
+    return result == noErr;
+}
+
+BOOL AEAudioControllerRenderMainOutput(AEAudioController *audioController, AudioTimeStamp inTimeStamp, UInt32 inNumberFrames, AudioBufferList *ioData) {
+    return AEAudioControllerRenderBus(audioController, audioController->_topGroup, inTimeStamp, inNumberFrames, ioData);
 }
 
 #pragma mark - Filters

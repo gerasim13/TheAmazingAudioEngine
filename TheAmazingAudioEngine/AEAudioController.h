@@ -861,11 +861,25 @@ typedef enum {
  */
 - (BOOL)channelGroupIsMuted:(AEChannelGroupRef)group;
 
+
+/*!
+ * Render group into AudioBufferList.
+ * Use only while the AUGraph is not running.
+ */
+BOOL AEAudioControllerRenderBus(AEAudioController *audioController,
+                                AEChannelGroupRef channelGroup,
+                                AudioTimeStamp inTimeStamp,
+                                UInt32 inNumberFrames,
+                                AudioBufferList *ioData);
+
 /*!
  * Render main output into AudioBufferList.
  * Use only while the AUGraph is not running.
  */
-BOOL AEAudioControllerRenderMainOutput(AEAudioController *audioController, AudioTimeStamp inTimeStamp, UInt32 inNumberFrames, AudioBufferList *ioData);
+BOOL AEAudioControllerRenderMainOutput(AEAudioController *audioController,
+                                       AudioTimeStamp inTimeStamp,
+                                       UInt32 inNumberFrames,
+                                       AudioBufferList *ioData);
 
 ///@}
 #pragma mark - Filters
