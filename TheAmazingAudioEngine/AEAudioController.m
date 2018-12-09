@@ -1831,7 +1831,10 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
                                                           AEMessageQueueMessageHandler           handler,
                                                           void                                  *userInfo,
                                                           int                                    userInfoLength) {
-    AEMessageQueueSendMessageToMainThread(THIS->_messageQueue, handler, userInfo, userInfoLength);
+    if (THIS->_started)
+    {
+        AEMessageQueueSendMessageToMainThread(THIS->_messageQueue, handler, userInfo, userInfoLength);
+    }
 }
 
 - (void)beginMessageExchangeBlock {
