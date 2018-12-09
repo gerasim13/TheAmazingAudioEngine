@@ -168,14 +168,15 @@ typedef enum {
  * Channel
  */
 typedef struct __channel_t {
-    ChannelType      type;
-    void            *ptr;
-    void            *object;
+    ChannelType       type;
+    void             *ptr;
+    void             *object;
+    CFArrayRef        channelSelection;
     AEChannelGroupRef parentGroup;
-    atomic_bool      playing;
-    float            volume;
-    float            pan;
-    BOOL             muted;
+    atomic_bool       playing;
+    float             volume;
+    float             pan;
+    BOOL              muted;
     AudioStreamBasicDescription audioDescription;
     callback_table_t callbacks;
     AudioTimeStamp   timeStamp;
@@ -185,7 +186,7 @@ typedef struct __channel_t {
     void             *audioController;
     void             *audiobusSenderPort;
     void             *audiobusFloatConverter;
-    AudioBufferList *audiobusScratchBuffer;
+    AudioBufferList  *audiobusScratchBuffer;
 } channel_t, *AEChannelRef;
 
 /*!
@@ -1085,6 +1086,11 @@ static OSStatus ioUnitRenderNotifyCallback(void *inRefCon, AudioUnitRenderAction
     NSTimeInterval bufferDuration = (double)bufferFrameSize / (double)self.audioDescription.mSampleRate;
     if ( _currentBufferDuration != bufferDuration ) self.currentBufferDuration = bufferDuration;
 #endif
+    
+    if ( ![self updateOutputDeviceStatus] ) {
+        if ( error ) *error = self.lastError;
+        self.lastError = nil;
+    }
     
     _interrupted = NO;
     
@@ -2537,8 +2543,12 @@ AudioTimeStamp AEAudioControllerCurrentAudioTimestamp(__unsafe_unretained AEAudi
         }
         
         int reason = [notification.userInfo[AVAudioSessionRouteChangeReasonKey] intValue];
-        if ( !updatedVP && (reason == AVAudioSessionRouteChangeReasonNewDeviceAvailable || reason == AVAudioSessionRouteChangeReasonOldDeviceUnavailable) && self->_inputEnabled ) {
-            [self updateInputDeviceStatus];
+        if ( !updatedVP && (reason == AVAudioSessionRouteChangeReasonNewDeviceAvailable || reason == AVAudioSessionRouteChangeReasonOldDeviceUnavailable) ) {
+            if ( self->_inputEnabled )
+            {
+                [self updateInputDeviceStatus];
+            }
+            [self updateOutputDeviceStatus];
         }
         
         [self willChangeValueForKey:@"inputGainAvailable"];
@@ -2721,6 +2731,8 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
     if ( _inputEnabled ) {
         [self updateInputDeviceStatus];
     }
+    
+    [self updateOutputDeviceStatus];
 
     if ( !_topGroup ) {
         // Allocate top-level group
@@ -3481,6 +3493,26 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
     }
 }
 
+- (BOOL)updateOutputDeviceStatus {
+    AVAudioSession *audioSession = [AVAudioSession sharedInstance];
+    int channels = (int)audioSession.outputNumberOfChannels;
+    
+    if ( channels != _numberOfOutputChannels ) {
+        [self willChangeValueForKey:@"numberOfOutputChannels"];
+        [self willChangeValueForKey:@"outputChannelDescriptions"];
+        _numberOfOutputChannels = channels;
+        [self didChangeValueForKey:@"outputChannelDescriptions"];
+        [self didChangeValueForKey:@"numberOfOutputChannels"];
+    }
+    
+    if ( _topChannel ) {
+        // Reconfigure graph
+        [self configureChannelsForGroup:NULL];
+        AECheckOSStatus([self updateGraph], "Update graph");
+    }
+    return YES;
+}
+
 - (void)configureChannelsForGroup:(AEChannelGroupRef)group {
     
     UInt32 priorBusCount = 0;
@@ -3547,6 +3579,15 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
                     hasReceivers = YES;
                 }
             }
+
+            // Determine if we need multichannel output
+            BOOL needsMultichannelOutput = NO;
+            for ( int i=0; i<subgroup->channelCount; i++ ) {
+                if ( subgroup->channels[i]->channelSelection ) {
+                    needsMultichannelOutput = YES;
+                    break;
+                }
+            }
             
             if ( !subgroup->mixerNode ) {
                 // Create mixer node if necessary
@@ -3587,6 +3628,10 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
             // Determine what the output format should be (use TAAE's audio description if client code will see the audio)
             AudioStreamBasicDescription mixerOutputDescription = !subgroup->converterNode ? _audioDescription : currentMixerOutputDescription;
             mixerOutputDescription.mSampleRate = _audioDescription.mSampleRate;
+
+			if ( needsMultichannelOutput ) {
+                AEAudioStreamBasicDescriptionSetChannelsPerFrame(&mixerOutputDescription, _numberOfOutputChannels);
+            }
             
             if ( memcmp(&currentMixerOutputDescription, &mixerOutputDescription, sizeof(mixerOutputDescription)) != 0 ) {
                 // Assign the output format if necessary

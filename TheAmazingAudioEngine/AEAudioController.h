@@ -30,6 +30,7 @@ extern "C" {
 #import <AudioToolbox/AudioToolbox.h>
 #import <AudioUnit/AudioUnit.h>
 #import <Foundation/Foundation.h>
+#import <AVFoundation/AVFoundation.h>
 #import "AEMessageQueue.h"
 
 @class AEAudioController;
@@ -1665,6 +1666,14 @@ BOOL AECurrentThreadIsAudioThread(void);
 @property (nonatomic, readonly) int numberOfInputChannels;
 
 /*!
+ * Input channel descriptions
+ *
+ *  Returns an array of strings, each describing the input channel at the
+ *  corresponding index.
+ */
+@property (nonatomic, readonly) NSArray *inputChannelDescriptions;
+
+/*!
  * The audio description defining the input audio format
  * 
  *  Note: This property is observable
@@ -1672,6 +1681,26 @@ BOOL AECurrentThreadIsAudioThread(void);
  *  See also @link inputMode @endlink and @link inputChannelSelection @endlink
  */
 @property (nonatomic, readonly) AudioStreamBasicDescription inputAudioDescription;
+
+/*!
+ * The number of audio channels that the current audio output device provides
+ *
+ *  Note that unless you are using the multi-channel output facilities
+ *  (@link setOutputChannelSelection:forChannel: @endlink, etc.), you will
+ *  only be sending audio to the first *n* channels, where *n* is the number of
+ *  channels described by @link audioDescription @endlink.
+ *
+ *  Note: This property is observable
+ */
+@property (nonatomic, readonly) int numberOfOutputChannels;
+
+/*!
+ * Output channel descriptions
+ *
+ *  Returns an array of strings, each describing the output channel at the
+ *  corresponding index.
+ */
+@property (nonatomic, readonly) NSArray *outputChannelDescriptions;
 
 /*!
  * The audio description that the audio controller was setup with
