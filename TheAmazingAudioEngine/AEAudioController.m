@@ -3540,8 +3540,13 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
         BOOL hasUpstreamInteraction = NO;
         AUNodeInteraction upstreamInteraction;
         for ( int j=0; j<numInteractions; j++ ) {
-            if ( (interactions[j].nodeInteractionType == kAUNodeInteraction_Connection && interactions[j].nodeInteraction.connection.destNode == (group ? group->mixerNode : _ioNode) && interactions[j].nodeInteraction.connection.destInputNumber == i) ||
-                (interactions[j].nodeInteractionType == kAUNodeInteraction_InputCallback && interactions[j].nodeInteraction.inputCallback.destNode == (group ? group->mixerNode : _ioNode) && interactions[j].nodeInteraction.inputCallback.destInputNumber == i) ) {
+            if ( (interactions[j].nodeInteractionType == kAUNodeInteraction_Connection &&
+                  interactions[j].nodeInteraction.connection.destNode == (group ? group->mixerNode : _ioNode) &&
+                  interactions[j].nodeInteraction.connection.destInputNumber == i) ||
+                 (interactions[j].nodeInteractionType == kAUNodeInteraction_InputCallback &&
+                  interactions[j].nodeInteraction.inputCallback.destNode == (group ? group->mixerNode : _ioNode) &&
+                  interactions[j].nodeInteraction.inputCallback.destInputNumber == i) )
+            {
                 upstreamInteraction = interactions[j];
                 hasUpstreamInteraction = YES;
                 break;
