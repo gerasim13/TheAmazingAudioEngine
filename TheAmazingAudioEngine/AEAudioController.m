@@ -2738,22 +2738,23 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
         // Allocate top-level group
         AEChannelRef topChannel = (AEChannelRef)calloc(1, sizeof(channel_t));
         AEChannelGroupRef topGroup = (AEChannelGroupRef)calloc(1, sizeof(channel_group_t));
-        topChannel->ptr = topGroup;
-        atomic_exchange_explicit(&_topChannel, topChannel, memory_order_release);
+        
+        topGroup->channel    = topChannel;
+        topChannel->ptr      = topGroup;
+        topChannel->type     = kChannelTypeGroup;
+        topChannel->object   = AEAudioSourceMainOutput;
+        topChannel->volume   = 1.0;
+        topChannel->pan      = 0.0;
+        topChannel->muted    = NO;
+        topChannel->playing  = YES;
+        topChannel->audioController = (__bridge void *)self;
+        
         atomic_exchange_explicit(&_topGroup, topGroup, memory_order_release);
-
-        _topChannel->type     = kChannelTypeGroup;
-        _topChannel->object   = AEAudioSourceMainOutput;
-        _topChannel->volume   = 1.0;
-        _topChannel->pan      = 0.0;
-        _topChannel->muted    = NO;
-        atomic_store_explicit(&_topChannel->playing, YES, memory_order_release);
-        _topChannel->audioController = (__bridge void *)self;
-        _topGroup->channel   = _topChannel;
+        atomic_exchange_explicit(&_topChannel, topChannel, memory_order_release);
         
         UInt32 size = sizeof(_topChannel->audioDescription);
         AECheckOSStatus(AudioUnitGetProperty(_ioAudioUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 0, &_topChannel->audioDescription, &size),
-                   "AudioUnitGetProperty(kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output)");
+                        "AudioUnitGetProperty(kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output)");
     }
     
     // Initialise group
@@ -2764,7 +2765,8 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
     
     // Set the master volume
     AudioUnitParameterValue value = _masterOutputVolume;
-    AECheckOSStatus(AudioUnitSetParameter(_topGroup->mixerAudioUnit, kMultiChannelMixerParam_Volume, kAudioUnitScope_Output, 0, value, 0), "AudioUnitSetParameter(kMultiChannelMixerParam_Volume)");
+    AECheckOSStatus(AudioUnitSetParameter(_topGroup->mixerAudioUnit, kMultiChannelMixerParam_Volume, kAudioUnitScope_Output, 0, value, 0),
+                    "AudioUnitSetParameter(kMultiChannelMixerParam_Volume)");
     
     // Initialize the graph
     result = AUGraphInitialize(_audioGraph);
