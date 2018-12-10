@@ -180,7 +180,8 @@ typedef struct __channel_t {
     AudioStreamBasicDescription audioDescription;
     callback_table_t callbacks;
     AudioTimeStamp   timeStamp;
-    
+    AUNode           converterNode;
+    AudioUnit        converterUnit;
     BOOL             setRenderNotification;
     
     void             *audioController;
@@ -1350,6 +1351,39 @@ static OSStatus ioUnitRenderNotifyCallback(void *inRefCon, AudioUnitRenderAction
     return channels;
 }
 
+-(void)setOutputChannelSelection:(NSArray *)channelSelection forChannel:(id<AEAudioPlayable>)channel {
+    int index;
+    AEChannelGroupRef parentGroup = [self searchForGroupContainingChannelMatchingPtr:channel.renderCallback userInfo:(__bridge void *)(channel) index:&index];
+    if ( !parentGroup ) {
+        NSLog(@"Warning: Tried to set output channel selection for nonexistent channel");
+        return;
+    }
+    channelSelection = [channelSelection copy];
+    if ( parentGroup->channels[index]->channelSelection ) {
+        CFRelease(parentGroup->channels[index]->channelSelection);
+        parentGroup->channels[index]->channelSelection = NULL;
+    }
+    
+    if ( channelSelection ) {
+        parentGroup->channels[index]->channelSelection = CFBridgingRetain(channelSelection);
+    }
+    
+    [self updateOutputDeviceStatus];
+}
+
+-(void)setOutputChannelSelection:(NSArray *)channelSelection forChannelGroup:(AEChannelGroupRef)group {
+    channelSelection = [channelSelection copy];
+    if ( group->channel->channelSelection ) {
+        CFRelease(group->channel->channelSelection);
+        group->channel->channelSelection = NULL;
+    }
+    
+    if ( channelSelection ) {
+        group->channel->channelSelection = CFBridgingRetain(channelSelection);
+    }
+    
+    [self updateOutputDeviceStatus];
+}
 
 - (AEChannelGroupRef)createChannelGroup {
     return [self createChannelGroupWithinChannelGroup:_topGroup];
@@ -1868,7 +1902,13 @@ void AEAudioControllerSendAsynchronousMessageToMainThread(__unsafe_unretained AE
         return;
     }
     if ( !group->level_monitor_data.monitoringEnabled ) {
-        AEFloatConverter *floatConverter = [[AEFloatConverter alloc] initWithSourceFormat:group->channel->audioDescription];
+        AudioStreamBasicDescription outputDescription;
+        UInt32 size = sizeof(outputDescription);
+        AudioUnit unit = group->converterUnit ? group->converterUnit : group->mixerAudioUnit;
+        AECheckOSStatus(AudioUnitGetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 0, &outputDescription, &size),
+                        "AudioUnitGetProperty");
+        
+        AEFloatConverter *floatConverter = [[AEFloatConverter alloc] initWithSourceFormat:outputDescription];
         AudioBufferList *scratchBuffer = AEAudioBufferListCreate(floatConverter.floatingPointAudioDescription, kLevelMonitorScratchBufferSize);
         AudioBufferList *oldScratch = atomic_exchange_explicit(&group->level_monitor_data.scratchBuffer, scratchBuffer, memory_order_release);
         CFBridgingRelease(atomic_exchange_explicit(&group->level_monitor_data.floatConverter, (void*)CFBridgingRetain(floatConverter), memory_order_release));
@@ -3540,14 +3580,15 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
         BOOL hasUpstreamInteraction = NO;
         AUNodeInteraction upstreamInteraction;
         for ( int j=0; j<numInteractions; j++ ) {
-            if ( (interactions[j].nodeInteractionType == kAUNodeInteraction_Connection &&
-                  interactions[j].nodeInteraction.connection.destNode == (group ? group->mixerNode : _ioNode) &&
-                  interactions[j].nodeInteraction.connection.destInputNumber == i) ||
-                 (interactions[j].nodeInteractionType == kAUNodeInteraction_InputCallback &&
-                  interactions[j].nodeInteraction.inputCallback.destNode == (group ? group->mixerNode : _ioNode) &&
-                  interactions[j].nodeInteraction.inputCallback.destInputNumber == i) )
+            AUNodeInteraction interaction = interactions[j];
+            if ( (interaction.nodeInteractionType == kAUNodeInteraction_Connection &&
+                  interaction.nodeInteraction.connection.destNode == (group ? group->mixerNode : _ioNode) &&
+                  interaction.nodeInteraction.connection.destInputNumber == i) ||
+                 (interaction.nodeInteractionType == kAUNodeInteraction_InputCallback &&
+                  interaction.nodeInteraction.inputCallback.destNode == (group ? group->mixerNode : _ioNode) &&
+                  interaction.nodeInteraction.inputCallback.destInputNumber == i) )
             {
-                upstreamInteraction = interactions[j];
+                upstreamInteraction = interaction;
                 hasUpstreamInteraction = YES;
                 break;
             }
@@ -3563,6 +3604,75 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
                 AECheckOSStatus(AUGraphDisconnectNodeInput(_audioGraph, targetNode, targetBus), "AUGraphDisconnectNodeInput");
             }
             continue;
+        }
+        
+        if ( group ) {
+            // Configure output channel selection
+            if ( channel->channelSelection ) {
+                // Construct output audio description and channel map
+                AudioStreamBasicDescription outputDescription = channel->audioDescription;
+                AEAudioStreamBasicDescriptionSetChannelsPerFrame(&outputDescription, _numberOfOutputChannels);
+                UInt32 channelMapSize = sizeof(SInt32) * _numberOfOutputChannels;
+                SInt32 *channelMap = (SInt32*)malloc(channelMapSize);
+                for ( int i=0, j=0; i<_numberOfOutputChannels; i++ ) {
+                    NSArray *channelSelection = (__bridge NSArray *)(channel->channelSelection);
+                    channelMap[i] = [channelSelection containsObject:[NSNumber numberWithInt:i]] ? j++ : -1;
+                }
+
+                if ( !channel->converterUnit ) {
+                    // Create converter node
+                    AudioComponentDescription audioConverterDescription = AEAudioComponentDescriptionMake(kAudioUnitManufacturer_Apple, kAudioUnitType_FormatConverter, kAudioUnitSubType_AUConverter);
+
+                    if (!AECheckOSStatus(AUGraphAddNode(_audioGraph, &audioConverterDescription, &channel->converterNode), "AUGraphAddNode") ||
+                        !AECheckOSStatus(AUGraphNodeInfo(_audioGraph, channel->converterNode, NULL, &channel->converterUnit), "AUGraphNodeInfo") ) {
+                        channel->converterUnit = NULL;
+                        channel->converterNode = 0;
+                    }
+                }
+
+                // Configure converter node with channel map
+                AECheckOSStatus(AudioUnitSetProperty(channel->converterUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 0, &outputDescription, sizeof(AudioStreamBasicDescription)), "AudioUnitSetProperty(kAudioUnitProperty_StreamFormat)");
+                AECheckOSStatus(AudioUnitSetProperty(channel->converterUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &channel->audioDescription, sizeof(AudioStreamBasicDescription)), "AudioUnitSetProperty(kAudioUnitProperty_StreamFormat)");
+                AECheckOSStatus(AudioUnitSetProperty(channel->converterUnit, kAudioOutputUnitProperty_ChannelMap, kAudioUnitScope_Output, 0, channelMap, channelMapSize), "AudioUnitSetProperty(kAudioOutputUnitProperty_ChannelMap)");
+
+                // Make connection from converter to mixer, if necessary
+                if ( !hasUpstreamInteraction || upstreamInteraction.nodeInteractionType != kAUNodeInteraction_Connection || upstreamInteraction.nodeInteraction.connection.sourceNode != channel->converterNode ) {
+                    if ( hasUpstreamInteraction ) {
+                        AECheckOSStatus(AUGraphDisconnectNodeInput(_audioGraph, group->mixerNode, i), "AUGraphDisconnectNodeInput");
+                    }
+                    AECheckOSStatus(AUGraphConnectNodeInput(_audioGraph, channel->converterNode, 0, group->mixerNode, i), "AUGraphConnectNodeInput");
+                }
+
+                // Find connections to converter node
+                UInt32 numInteractions = 2;
+                AUNodeInteraction converterInteractions[numInteractions];
+                AECheckOSStatus(AUGraphGetNodeInteractions(_audioGraph, channel->converterNode, &numInteractions, converterInteractions), "AUGraphGetNodeInteractions");
+                hasUpstreamInteraction = NO;
+                for ( int j=0; j<numInteractions; j++ ) {
+                    AUNodeInteraction interaction = converterInteractions[j];
+                    if ( (interaction.nodeInteractionType == kAUNodeInteraction_Connection &&
+                          interaction.nodeInteraction.connection.destNode == channel->converterNode) ||
+                         (interaction.nodeInteractionType == kAUNodeInteraction_InputCallback &&
+                          interaction.nodeInteraction.inputCallback.destNode == channel->converterNode) )
+                    {
+                        upstreamInteraction = interaction;
+                        hasUpstreamInteraction = YES;
+                        break;
+                    }
+                }
+
+                free(channelMap);
+            } else {
+                // Remove converter unit and assign output audio description
+                if ( channel->converterUnit ) {
+                    if ( hasUpstreamInteraction && (upstreamInteraction.nodeInteractionType == kAUNodeInteraction_Connection || upstreamInteraction.nodeInteraction.connection.sourceNode == channel->converterNode) ) {
+                        hasUpstreamInteraction = NO;
+                    }
+                    AECheckOSStatus(AUGraphRemoveNode(_audioGraph, channel->converterNode), "AUGraphRemoveNode");
+                    channel->converterNode = 0;
+                    channel->converterUnit = NULL;
+                }
+            }
         }
         
         if ( channel->type == kChannelTypeChannel ) {
@@ -3605,6 +3715,10 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
                     .componentFlags = 0,
                     .componentFlagsMask = 0
                 };
+                
+                if ( subgroup->converterNode ) {
+                    AECheckOSStatus(AUGraphConnectNodeInput(_audioGraph, subgroup->mixerNode, 0, subgroup->converterNode, 0), "AUGraphConnectNodeInput");
+                }
                 
                 // Add mixer node to graph
                 if ( !AECheckOSStatus(AUGraphAddNode(_audioGraph, &mixer_desc, &subgroup->mixerNode), "AUGraphAddNode mixer") ||
@@ -3690,6 +3804,12 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
                 AECheckOSStatus(AudioUnitSetProperty(subgroup->converterUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &currentMixerOutputDescription, sizeof(AudioStreamBasicDescription)), "AudioUnitSetProperty(kAudioUnitProperty_StreamFormat)");
                 AECheckOSStatus(AudioUnitSetProperty(subgroup->converterUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 0, &_audioDescription, sizeof(AudioStreamBasicDescription)), "AudioUnitSetProperty(kAudioUnitProperty_StreamFormat)");
                 channel->audioDescription = _audioDescription;
+                if ( needsMultichannelOutput ) {
+                    AEAudioStreamBasicDescriptionSetChannelsPerFrame(&channel->audioDescription, _numberOfOutputChannels);
+                }
+                
+                AECheckOSStatus(AudioUnitSetProperty(subgroup->converterUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &currentMixerOutputDescription, sizeof(AudioStreamBasicDescription)), "AudioUnitSetProperty(kAudioUnitProperty_StreamFormat)");
+                AECheckOSStatus(AudioUnitSetProperty(subgroup->converterUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 0, &_audioDescription, sizeof(AudioStreamBasicDescription)), "AudioUnitSetProperty(kAudioUnitProperty_StreamFormat)");
             } else {
                 channel->audioDescription = mixerOutputDescription;
             }
@@ -3816,7 +3936,8 @@ static void removeChannelsFromGroup(__unsafe_unretained AEAudioController *THIS,
         // Find the channel in our fixed array
         int index = 0;
         for ( index=0; index < atomic_load_explicit(&group->channelCount, memory_order_relaxed); index++ ) {
-            if ( group->channels[index] && group->channels[index]->ptr == ptrs[i] && group->channels[index]->object == objects[i] ) {
+            AEChannelRef channel = group->channels[index];
+            if ( channel && channel->ptr == ptrs[i] && channel->object == objects[i] ) {
                 // Mute this channel until we update the graph
                 AudioUnitParameterValue enabledValue = 0;
                 AECheckOSStatus(AudioUnitSetParameter(group->mixerAudioUnit, kMultiChannelMixerParam_Enable, kAudioUnitScope_Input, index, enabledValue, 0),
@@ -3832,7 +3953,8 @@ static void removeChannelsFromGroup(__unsafe_unretained AEAudioController *THIS,
         // Find the channel in our channel array
         int index = 0;
         for ( index=0; index < atomic_load_explicit(&group->channelCount, memory_order_relaxed); index++ ) {
-            if ( group->channels[index] && group->channels[index]->ptr == ptrs[i] && group->channels[index]->object == objects[i] ) {
+            AEChannelRef channel = group->channels[index];
+            if ( channel && channel->ptr == ptrs[i] && channel->object == objects[i] ) {
                 if ( outChannelReferences && outChannelReferencesCount < count ) {
                     outChannelReferences[outChannelReferencesCount++] = group->channels[index];
                 }
@@ -3965,6 +4087,17 @@ static void removeChannelsFromGroup(__unsafe_unretained AEAudioController *THIS,
         CFBridgingRelease(channel->object);
     }
     
+    if ( channel->converterNode ) {
+        AECheckOSStatus(AUGraphRemoveNode(_audioGraph, channel->converterNode), "AUGraphRemoveNode");
+        channel->converterNode = 0;
+        channel->converterUnit = NULL;
+    }
+    
+    if ( channel->channelSelection ) {
+        CFRelease(channel->channelSelection);
+        channel->channelSelection = NULL;
+    }
+    
     free(channel);
 }
 
@@ -3998,6 +4131,8 @@ static void removeChannelsFromGroup(__unsafe_unretained AEAudioController *THIS,
     group->mixerAudioUnit = NULL;
     group->converterUnit = NULL;
     group->converterNode = 0;
+    group->channel->converterNode = 0;
+    group->channel->converterUnit = NULL;
     memset(&group->channel->audioDescription, 0, sizeof(AudioStreamBasicDescription));
     if ( group->level_monitor_data.scratchBuffer ) {
         AEAudioBufferListFree(group->level_monitor_data.scratchBuffer);
@@ -4011,6 +4146,8 @@ static void removeChannelsFromGroup(__unsafe_unretained AEAudioController *THIS,
         AEChannelRef channel = group->channels[i];
         if ( !channel ) continue;
         channel->setRenderNotification = NO;
+        channel->converterNode = 0;
+        channel->converterUnit = NULL;
         if ( channel->type == kChannelTypeGroup ) {
             [self markGroupTorndown:(AEChannelGroupRef)channel->ptr];
         }

@@ -745,6 +745,26 @@ typedef enum {
 - (NSArray*)channelsInChannelGroup:(AEChannelGroupRef)group;
 
 /*!
+ * Determine which output channels to send this channel to
+ *
+ *  When sending audio to a multi-channel device (or multiple devices using the multi-route
+ *  audio session category), this determines which of the output channels to send the given
+ *  TAAE channel to.
+ *
+ *  Note that if you use this facility, this channel's parent group and all the ones above it will
+ *  begin processing audio in @link numberOfOutputChannels @endlink channels. That means you
+ *  must be prepared to process this multi-channel audio in filters or receivers attached to
+ *  this channel's parent group, channel groups above this one, or the main audio output.
+ *
+ *  By default the first *n* channels are selected, where *n* is the number of channels described in
+ *  @link audioDescription @endlink or @link AEAudioPlayable::audioDescription @endlink if set.
+ *
+ * @param channelSelection An array of NSIntegers, each identifying the output channel by index
+ * @param channel The TAAE channel
+ */
+- (void)setOutputChannelSelection:(NSArray*)channelSelection forChannel:(id<AEAudioPlayable>)channel;
+
+/*!
  * Create a channel group
  *
  *  Channel groups cause the channels within the group to be pre-mixed together, so that one filter
@@ -862,6 +882,25 @@ typedef enum {
  */
 - (BOOL)channelGroupIsMuted:(AEChannelGroupRef)group;
 
+/*!
+ * Determine which output channels to send this channel group to
+ *
+ *  When sending audio to a multi-channel device (or multiple devices using the multi-route
+ *  audio session category), this determines which of the output channels to send the given
+ *  TAAE channel group to.
+ *
+ *  Note that if you use this facility, this channel group and all the ones above it will
+ *  begin processing audio in @link numberOfOutputChannels @endlink channels. That means you
+ *  must be prepared to process this multi-channel audio in filters or receivers attached to
+ *  this channel group, channel groups above this one, or the main audio output.
+ *
+ *  By default the first *n* channels are selected, where *n* is the number of channels described by
+ *  @link audioDescription @endlink.
+ *
+ * @param channelSelection An array of NSIntegers, each identifying the output channel by index
+ * @param channel The TAAE channel
+ */
+- (void)setOutputChannelSelection:(NSArray*)channelSelection forChannelGroup:(AEChannelGroupRef)group;
 
 /*!
  * Render group into AudioBufferList.
