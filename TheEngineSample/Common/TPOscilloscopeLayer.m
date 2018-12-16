@@ -206,6 +206,7 @@ static CVReturn displayLinkRenderCallback(CVDisplayLinkRef displayLink,
 static void audioCallback(__unsafe_unretained TPOscilloscopeLayer *THIS,
                           __unsafe_unretained AEAudioController *audioController,
                           void *source,
+                          AudioUnitRenderActionFlags *ioActionFlags,
                           const AudioTimeStamp *time,
                           UInt32 frames,
                           AudioBufferList *audio) {
