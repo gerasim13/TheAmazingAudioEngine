@@ -155,8 +155,10 @@ static const int kInputChannelsChangedContext;
         [_audioController addChannels:@[_audioUnitPlayer]];
         
         [_audioController addObserver:self forKeyPath:@"numberOfInputChannels" options:0 context:(void*)&kInputChannelsChangedContext];
-        [_audioController setOutputChannelSelection:[NSArray arrayWithObjects:[NSNumber numberWithInt:2], [NSNumber numberWithInt:3], nil]
+        [_audioController setOutputChannelSelection:[NSArray arrayWithObjects:[NSNumber numberWithInt:0], [NSNumber numberWithInt:1], nil]
                                          forChannel:_loop1];
+        [_audioController setOutputChannelSelection:[NSArray arrayWithObjects:[NSNumber numberWithInt:2], [NSNumber numberWithInt:3], nil]
+                                         forChannel:_loop2];
     }
 }
 

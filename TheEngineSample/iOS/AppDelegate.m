@@ -22,8 +22,10 @@
     self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
     
     // Create an instance of the audio controller, set it up and start it running
-    self.audioController = [[AEAudioController alloc] initWithAudioDescription:AEAudioStreamBasicDescriptionNonInterleavedFloatStereo inputEnabled:YES];
+    AEAudioControllerOptions options = AEAudioControllerOptionDefaults | AEAudioControllerOptionEnableInput | AEAudioControllerOptionMultiroutOutput;
+    self.audioController = [[AEAudioController alloc] initWithAudioDescription:AEAudioStreamBasicDescriptionNonInterleavedFloatStereo options:options];
     _audioController.preferredBufferDuration = 0.005;
+    _audioController.preferredOutputNumberOfChannels = 4;
     _audioController.useMeasurementMode = YES;
     [_audioController start:NULL];
     
