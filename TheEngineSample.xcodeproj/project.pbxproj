@@ -106,6 +106,13 @@
 			remoteGlobalIDString = 7A56870F1B54610900243427;
 			remoteInfo = "TheAmazingAudioEngine OS X";
 		};
+		BC5570C221C67ECB00575746 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4C7C67EC16F1605A00721E60 /* TheAmazingAudioEngine.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 17BB5B401BECD101007A2892;
+			remoteInfo = "TheAmazingAudioEngine tvOS";
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
@@ -330,6 +337,7 @@
 			children = (
 				4C7C67F116F1605A00721E60 /* libTheAmazingAudioEngine.a */,
 				7A8D22F01B72AF250054D2B2 /* libTheAmazingAudioEngine OS X.a */,
+				BC5570C321C67ECB00575746 /* libTheAmazingAudioEngine tvOS.a */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -444,7 +452,7 @@
 		4C0C247C1599FADD00D23E13 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				LastUpgradeCheck = 0700;
+				LastUpgradeCheck = 1010;
 				ORGANIZATIONNAME = "A Tasty Pixel";
 				TargetAttributes = {
 					7A8D22F41B72AF5C0054D2B2 = {
@@ -490,6 +498,13 @@
 			fileType = archive.ar;
 			path = "libTheAmazingAudioEngine OS X.a";
 			remoteRef = 7A8D22EF1B72AF250054D2B2 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		BC5570C321C67ECB00575746 /* libTheAmazingAudioEngine tvOS.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libTheAmazingAudioEngine tvOS.a";
+			remoteRef = BC5570C221C67ECB00575746 /* PBXContainerItemProxy */;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
 /* End PBXReferenceProxy section */
