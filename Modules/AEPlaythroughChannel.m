@@ -85,10 +85,11 @@ static const int kAudiobusReceiverPortConnectedToSelfChanged;
 
 static void inputCallback(__unsafe_unretained AEPlaythroughChannel *THIS,
                           __unsafe_unretained AEAudioController *audioController,
-                          void                     *source,
-                          const AudioTimeStamp     *time,
-                          UInt32                    frames,
-                          AudioBufferList          *audio) {
+                          void                       *source,
+                          AudioUnitRenderActionFlags *ioActionFlags,
+                          const AudioTimeStamp       *time,
+                          UInt32                      frames,
+                          AudioBufferList            *audio) {
 
     if ( THIS->_audiobusConnectedToSelf ) return;
     TPCircularBufferCopyAudioBufferList(&THIS->_buffer, audio, time, kTPCircularBufferCopyAll, NULL);
