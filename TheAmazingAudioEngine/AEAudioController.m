@@ -869,9 +869,18 @@ static OSStatus ioUnitRenderNotifyCallback(void *inRefCon, AudioUnitRenderAction
     
     BOOL enableInput            = options & AEAudioControllerOptionEnableInput;
     BOOL enableOutput           = options & AEAudioControllerOptionEnableOutput;
+    BOOL enableMultiroute       = options & AEAudioControllerOptionMultiroutOutput;
     
 #if TARGET_OS_IPHONE
-    _audioSessionCategory = enableInput ? (enableOutput ? AVAudioSessionCategoryPlayAndRecord : AVAudioSessionCategoryRecord) : AVAudioSessionCategoryPlayback;
+    if ( enableMultiroute ) {
+        _audioSessionCategory = AVAudioSessionCategoryMultiRoute;
+    }
+    else if ( enableInput ) {
+        _audioSessionCategory = enableOutput ? AVAudioSessionCategoryPlayAndRecord : AVAudioSessionCategoryRecord;
+    }
+    else {
+        _audioSessionCategory = AVAudioSessionCategoryPlayback;
+    }
     _allowMixingWithOtherApps = options & AEAudioControllerOptionAllowMixingWithOtherApps;
     _enableBluetoothInput = options & AEAudioControllerOptionEnableBluetoothInput;
     _voiceProcessingEnabled = options & AEAudioControllerOptionUseVoiceProcessing;
@@ -882,6 +891,7 @@ static OSStatus ioUnitRenderNotifyCallback(void *inRefCon, AudioUnitRenderAction
     _audioDescription = audioDescription;
     _inputEnabled = enableInput;
     _outputEnabled = enableOutput;
+    _multirouteEnabled = enableMultiroute;
     _masterOutputVolume = 1.0;
     _useHardwareSampleRate = options & AEAudioControllerOptionUseHardwareSampleRate;
     _inputMode = AEInputModeFixedAudioFormat;
@@ -2063,10 +2073,13 @@ BOOL AECurrentThreadIsAudioThread(void) {
     if ( [_audioSessionCategory isEqualToString:AVAudioSessionCategoryPlayAndRecord] ) {
         options |= AVAudioSessionCategoryOptionDefaultToSpeaker;
     }
-    options |= _enableBluetoothInput ? AVAudioSessionCategoryOptionAllowBluetooth : (AVAudioSessionCategoryOptionAllowBluetoothA2DP | AVAudioSessionCategoryOptionAllowAirPlay);
+    if ( ![_audioSessionCategory isEqualToString:AVAudioSessionCategoryMultiRoute] ) {
+        options |= _enableBluetoothInput ? AVAudioSessionCategoryOptionAllowBluetooth : (AVAudioSessionCategoryOptionAllowBluetoothA2DP | AVAudioSessionCategoryOptionAllowAirPlay);
+    }
 #endif
     
-    if ( [_audioSessionCategory isEqualToString:AVAudioSessionCategoryPlayAndRecord] || [_audioSessionCategory isEqualToString:AVAudioSessionCategoryPlayback] ) {
+    if ( [_audioSessionCategory isEqualToString:AVAudioSessionCategoryPlayAndRecord] ||
+         [_audioSessionCategory isEqualToString:AVAudioSessionCategoryPlayback] ) {
         options |= _allowMixingWithOtherApps ? AVAudioSessionCategoryOptionMixWithOthers : 0;
     }
     
@@ -2196,6 +2209,19 @@ BOOL AECurrentThreadIsAudioThread(void) {
 }
 
 #if TARGET_OS_IPHONE
+-(void)setPreferredOutputNumberOfChannels:(int)preferredOutputNumberOfChannels
+{
+    NSError *error = nil;
+    AVAudioSession *audioSession = [AVAudioSession sharedInstance];
+
+    if ( ![audioSession setPreferredOutputNumberOfChannels:preferredOutputNumberOfChannels error:&error] ) {
+        NSLog(@"TAAE: Couldn't set preferred Output number of channels: %@", error);
+    }
+    
+    _preferredOutputNumberOfChannels = audioSession.maximumOutputNumberOfChannels >= preferredOutputNumberOfChannels ? preferredOutputNumberOfChannels : (int)audioSession.preferredOutputNumberOfChannels;
+    [self updateOutputDeviceStatus];
+}
+
 -(void)setPreferredBufferDuration:(NSTimeInterval)preferredBufferDuration {
     if ( _preferredBufferDuration == preferredBufferDuration ) return;
     
@@ -2446,6 +2472,10 @@ AudioTimeStamp AEAudioControllerCurrentAudioTimestamp(__unsafe_unretained AEAudi
             }
         }
     } else {
+        if ( [keyPath isEqualToString:NSStringFromSelector(@selector(outputNumberOfChannels))] )
+        {
+            [self updateOutputDeviceStatus];
+        }
         [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
     }
 }
@@ -2652,6 +2682,9 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
     AVAudioSession *audioSession = [AVAudioSession sharedInstance];
     NSMutableString *extraInfo = [NSMutableString string];
     NSError *error = nil;
+    
+    // Add observer
+    [audioSession addObserver:self forKeyPath:NSStringFromSelector(@selector(outputNumberOfChannels)) options:NSKeyValueObservingOptionNew context:nil];
     
     // Set category
     [self setAudioSessionCategory:_audioSessionCategory];
@@ -3314,7 +3347,7 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
             if ( converterRequired ) {
                 // Build channel map
                 UInt32 channelMapSize = sizeof(SInt32) * audioDescription.mChannelsPerFrame;
-                SInt32 *channelMap = (SInt32*)malloc(channelMapSize);
+                SInt32 *channelMap = malloc(channelMapSize);
                 for ( int i=0; i<entry->audioDescription.mChannelsPerFrame; i++ ) {
                     if ( [(__bridge NSArray*)entry->channelMap count] > 0 ) {
                         channelMap[i] = min(numberOfInputChannels-1,
@@ -3368,7 +3401,6 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
                 
                 if ( currentMapping ) free(currentMapping);
                 free(channelMap);
-                channelMap = NULL;
             } else {
                 // No converter/channel map required - remove the converter if there is one
                 if ( entry->audioConverter ) {
@@ -3537,17 +3569,35 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
 
 - (BOOL)updateOutputDeviceStatus {
     AVAudioSession *audioSession = [AVAudioSession sharedInstance];
-    int channels = (int)audioSession.outputNumberOfChannels;
-    
-    if ( channels != _numberOfOutputChannels ) {
+    int numberOfOutputChannels = (int)audioSession.outputNumberOfChannels;
+    if (_numberOfOutputChannels != numberOfOutputChannels) {
         [self willChangeValueForKey:@"numberOfOutputChannels"];
         [self willChangeValueForKey:@"outputChannelDescriptions"];
-        _numberOfOutputChannels = channels;
+        _numberOfOutputChannels = numberOfOutputChannels;
         [self didChangeValueForKey:@"outputChannelDescriptions"];
         [self didChangeValueForKey:@"numberOfOutputChannels"];
     }
     
     if ( _topChannel ) {
+        
+//        // Setup multirouting
+//        if (_preferredOutputNumberOfChannels && _numberOfOutputChannels >= _preferredOutputNumberOfChannels)
+//        {
+//            UInt32 channelMapSize = sizeof(SInt32) * _numberOfOutputChannels;
+//            SInt32 *channelMap = malloc(channelMapSize);
+//
+//            // Setup io unit
+//            memset(channelMap, -1, channelMapSize);
+//            for (int i = 0; i < _preferredOutputNumberOfChannels && i < _numberOfOutputChannels; ++i)
+//            {
+//                channelMap[i] = i;
+//            }
+//
+//            AECheckOSStatus(AudioUnitSetProperty(_ioAudioUnit, kAudioOutputUnitProperty_ChannelMap, kAudioUnitScope_Output, 0, channelMap, channelMapSize), "AudioUnitSetProperty(kAudioOutputUnitProperty_ChannelMap)");
+//
+//            free(channelMap);
+//        }
+        
         // Reconfigure graph
         [self configureChannelsForGroup:NULL];
         AECheckOSStatus([self updateGraph], "Update graph");
@@ -3574,9 +3624,8 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
     AECheckOSStatus(AUGraphGetNodeInteractions(_audioGraph, group ? group->mixerNode : _ioNode, &numInteractions, interactions), "AUGraphGetNodeInteractions");
     
     for ( int i = 0; i < (group ? MAX(atomic_load_explicit(&group->channelCount, memory_order_relaxed), priorBusCount) : 1); i++ ) {
-        AEChannelRef channel = group ? group->channels[i] : _topChannel;
-        
         // Find the existing upstream connection
+        int targetBus = i;
         BOOL hasUpstreamInteraction = NO;
         AUNodeInteraction upstreamInteraction;
         for ( int j=0; j<numInteractions; j++ ) {
@@ -3594,9 +3643,9 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
             }
         }
         
+        AEChannelRef channel = group ? group->channels[i] : _topChannel;
         AUNode targetNode = group ? group->mixerNode : _ioNode;
         AudioUnit targetUnit = group ? group->mixerAudioUnit : _ioAudioUnit;
-        int targetBus = i;
         
         if ( !channel ) {
             // Removed channel - unset the input callback if necessary
@@ -3606,16 +3655,17 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
             continue;
         }
         
-        if ( group ) {
+        if ( _multirouteEnabled && group ) {
             // Configure output channel selection
             if ( channel->channelSelection ) {
                 // Construct output audio description and channel map
                 AudioStreamBasicDescription outputDescription = channel->audioDescription;
                 AEAudioStreamBasicDescriptionSetChannelsPerFrame(&outputDescription, _numberOfOutputChannels);
                 UInt32 channelMapSize = sizeof(SInt32) * _numberOfOutputChannels;
-                SInt32 *channelMap = (SInt32*)malloc(channelMapSize);
+                SInt32 *channelMap = malloc(channelMapSize);
+                NSArray *channelSelection = (__bridge NSArray *)(channel->channelSelection);
+
                 for ( int i=0, j=0; i<_numberOfOutputChannels; i++ ) {
-                    NSArray *channelSelection = (__bridge NSArray *)(channel->channelSelection);
                     channelMap[i] = [channelSelection containsObject:[NSNumber numberWithInt:i]] ? j++ : -1;
                 }
 
@@ -3634,13 +3684,14 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
                 AECheckOSStatus(AudioUnitSetProperty(channel->converterUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 0, &outputDescription, sizeof(AudioStreamBasicDescription)), "AudioUnitSetProperty(kAudioUnitProperty_StreamFormat)");
                 AECheckOSStatus(AudioUnitSetProperty(channel->converterUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &channel->audioDescription, sizeof(AudioStreamBasicDescription)), "AudioUnitSetProperty(kAudioUnitProperty_StreamFormat)");
                 AECheckOSStatus(AudioUnitSetProperty(channel->converterUnit, kAudioOutputUnitProperty_ChannelMap, kAudioUnitScope_Output, 0, channelMap, channelMapSize), "AudioUnitSetProperty(kAudioOutputUnitProperty_ChannelMap)");
+                free(channelMap);
 
                 // Make connection from converter to mixer, if necessary
                 if ( !hasUpstreamInteraction || upstreamInteraction.nodeInteractionType != kAUNodeInteraction_Connection || upstreamInteraction.nodeInteraction.connection.sourceNode != channel->converterNode ) {
                     if ( hasUpstreamInteraction ) {
-                        AECheckOSStatus(AUGraphDisconnectNodeInput(_audioGraph, group->mixerNode, i), "AUGraphDisconnectNodeInput");
+                        AECheckOSStatus(AUGraphDisconnectNodeInput(_audioGraph, targetNode, i), "AUGraphDisconnectNodeInput");
                     }
-                    AECheckOSStatus(AUGraphConnectNodeInput(_audioGraph, channel->converterNode, 0, group->mixerNode, i), "AUGraphConnectNodeInput");
+                    AECheckOSStatus(AUGraphConnectNodeInput(_audioGraph, channel->converterNode, 0, targetNode, i), "AUGraphConnectNodeInput");
                 }
 
                 // Find connections to converter node
@@ -3660,8 +3711,9 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
                         break;
                     }
                 }
-
-                free(channelMap);
+//                
+//                targetNode = channel->converterNode;
+//                targetUnit = channel->converterUnit;
             } else {
                 // Remove converter unit and assign output audio description
                 if ( channel->converterUnit ) {
@@ -3696,10 +3748,10 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
                     hasReceivers = YES;
                 }
             }
-
+            
             // Determine if we need multichannel output
             BOOL needsMultichannelOutput = NO;
-            for ( int i=0; i<subgroup->channelCount; i++ ) {
+            for ( int i=0; _multirouteEnabled && i<subgroup->channelCount; i++ ) {
                 if ( subgroup->channels[i]->channelSelection ) {
                     needsMultichannelOutput = YES;
                     break;

@@ -517,6 +517,8 @@ typedef enum {
     AEAudioControllerOptionEnableBluetoothInput     = 1 << 4,
     /// Whether to allow mixing audio with other apps.
     AEAudioControllerOptionAllowMixingWithOtherApps = 1 << 5,
+    /// Whether to enable multiroute output.
+    AEAudioControllerOptionMultiroutOutput          = 1 << 6,
     /// Default options
     AEAudioControllerOptionDefaults =
         AEAudioControllerOptionEnableOutput | AEAudioControllerOptionAllowMixingWithOtherApps,
@@ -1693,6 +1695,13 @@ BOOL AECurrentThreadIsAudioThread(void);
 @property (nonatomic, readonly) BOOL outputEnabled;
 
 /*!
+ * Whether multiroute output is currently available
+ *
+ *  Note: This property is observable
+ */
+@property (nonatomic, readonly) BOOL multirouteEnabled;
+
+/*!
  * The number of audio channels that the current audio input device provides
  *
  *  Note that this will not necessarily be the same as the number of audio channels
@@ -1720,6 +1729,11 @@ BOOL AECurrentThreadIsAudioThread(void);
  *  See also @link inputMode @endlink and @link inputChannelSelection @endlink
  */
 @property (nonatomic, readonly) AudioStreamBasicDescription inputAudioDescription;
+
+/*!
+ * Sets the preferred number of output channels for the current route.
+ */
+@property (nonatomic, assign) int preferredOutputNumberOfChannels;
 
 /*!
  * The number of audio channels that the current audio output device provides
