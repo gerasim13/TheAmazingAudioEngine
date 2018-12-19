@@ -101,16 +101,17 @@ static void inputCallback(__unsafe_unretained AEPlaythroughChannel *THIS,
 
 static OSStatus renderCallback(__unsafe_unretained AEPlaythroughChannel *THIS,
                                __unsafe_unretained AEAudioController *audioController,
-                               const AudioTimeStamp     *time,
-                               UInt32                    frames,
-                               AudioBufferList          *audio) {
-    while ( 1 ) {
-        // Discard any buffers with an incompatible format, in the event of a format change
-        AudioBufferList *nextBuffer = TPCircularBufferNextBufferList(&THIS->_buffer, NULL);
-        if ( !nextBuffer ) break;
-        if ( nextBuffer->mNumberBuffers == audio->mNumberBuffers ) break;
-        TPCircularBufferConsumeNextBufferList(&THIS->_buffer);
-    }
+                               AudioUnitRenderActionFlags *ioActionFlags,
+                               const AudioTimeStamp       *time,
+                               UInt32                      frames,
+                               AudioBufferList            *audio) {
+//    while ( 1 ) {
+//        // Discard any buffers with an incompatible format, in the event of a format change
+//        AudioBufferList *nextBuffer = TPCircularBufferNextBufferList(&THIS->_buffer, NULL);
+//        if ( !nextBuffer ) break;
+//        if ( nextBuffer->mNumberBuffers == audio->mNumberBuffers ) break;
+//        TPCircularBufferConsumeNextBufferList(&THIS->_buffer);
+//    }
     
     UInt32 fillCount = TPCircularBufferPeek(&THIS->_buffer, NULL, AEAudioControllerAudioDescription(audioController));
     if ( fillCount > frames+kSkipThreshold ) {
