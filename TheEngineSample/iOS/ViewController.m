@@ -154,7 +154,14 @@ static const int kInputChannelsChangedContext;
         // Finally, add the audio unit player
         [_audioController addChannels:@[_audioUnitPlayer]];
         
-        [_audioController addObserver:self forKeyPath:@"numberOfInputChannels" options:0 context:(void*)&kInputChannelsChangedContext];
+        // Multiroute selection
+        if (_audioController.numberOfOutputChannels >= 4) {
+            [_audioController addObserver:self forKeyPath:@"numberOfInputChannels" options:0 context:(void*)&kInputChannelsChangedContext];
+            [_audioController setOutputChannelSelection:[NSArray arrayWithObjects:@(0), @(1), nil]
+                                             forChannel:_loop1];
+            [_audioController setOutputChannelSelection:[NSArray arrayWithObjects:@(2), @(3), nil]
+                                             forChannel:_loop2];
+        }
     }
 }
 

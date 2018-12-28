@@ -30,6 +30,7 @@ extern "C" {
 #import <AudioToolbox/AudioToolbox.h>
 #import <AudioUnit/AudioUnit.h>
 #import <Foundation/Foundation.h>
+#import <AVFoundation/AVFoundation.h>
 #import "AEMessageQueue.h"
 
 @class AEAudioController;
@@ -516,6 +517,8 @@ typedef enum {
     AEAudioControllerOptionEnableBluetoothInput     = 1 << 4,
     /// Whether to allow mixing audio with other apps.
     AEAudioControllerOptionAllowMixingWithOtherApps = 1 << 5,
+    /// Whether to enable multiroute output.
+    AEAudioControllerOptionMultiroutOutput          = 1 << 6,
     /// Default options
     AEAudioControllerOptionDefaults =
         AEAudioControllerOptionEnableOutput | AEAudioControllerOptionAllowMixingWithOtherApps,
@@ -744,6 +747,26 @@ typedef enum {
 - (NSArray*)channelsInChannelGroup:(AEChannelGroupRef)group;
 
 /*!
+ * Determine which output channels to send this channel to
+ *
+ *  When sending audio to a multi-channel device (or multiple devices using the multi-route
+ *  audio session category), this determines which of the output channels to send the given
+ *  TAAE channel to.
+ *
+ *  Note that if you use this facility, this channel's parent group and all the ones above it will
+ *  begin processing audio in @link numberOfOutputChannels @endlink channels. That means you
+ *  must be prepared to process this multi-channel audio in filters or receivers attached to
+ *  this channel's parent group, channel groups above this one, or the main audio output.
+ *
+ *  By default the first *n* channels are selected, where *n* is the number of channels described in
+ *  @link audioDescription @endlink or @link AEAudioPlayable::audioDescription @endlink if set.
+ *
+ * @param channelSelection An array of NSIntegers, each identifying the output channel by index
+ * @param channel The TAAE channel
+ */
+- (void)setOutputChannelSelection:(NSArray*)channelSelection forChannel:(id<AEAudioPlayable>)channel;
+
+/*!
  * Create a channel group
  *
  *  Channel groups cause the channels within the group to be pre-mixed together, so that one filter
@@ -861,6 +884,25 @@ typedef enum {
  */
 - (BOOL)channelGroupIsMuted:(AEChannelGroupRef)group;
 
+/*!
+ * Determine which output channels to send this channel group to
+ *
+ *  When sending audio to a multi-channel device (or multiple devices using the multi-route
+ *  audio session category), this determines which of the output channels to send the given
+ *  TAAE channel group to.
+ *
+ *  Note that if you use this facility, this channel group and all the ones above it will
+ *  begin processing audio in @link numberOfOutputChannels @endlink channels. That means you
+ *  must be prepared to process this multi-channel audio in filters or receivers attached to
+ *  this channel group, channel groups above this one, or the main audio output.
+ *
+ *  By default the first *n* channels are selected, where *n* is the number of channels described by
+ *  @link audioDescription @endlink.
+ *
+ * @param channelSelection An array of NSIntegers, each identifying the output channel by index
+ * @param channel The TAAE channel
+ */
+- (void)setOutputChannelSelection:(NSArray*)channelSelection forChannelGroup:(AEChannelGroupRef)group;
 
 /*!
  * Render group into AudioBufferList.
@@ -1653,6 +1695,13 @@ BOOL AECurrentThreadIsAudioThread(void);
 @property (nonatomic, readonly) BOOL outputEnabled;
 
 /*!
+ * Whether multiroute output is currently available
+ *
+ *  Note: This property is observable
+ */
+@property (nonatomic, readonly) BOOL multirouteEnabled;
+
+/*!
  * The number of audio channels that the current audio input device provides
  *
  *  Note that this will not necessarily be the same as the number of audio channels
@@ -1665,6 +1714,14 @@ BOOL AECurrentThreadIsAudioThread(void);
 @property (nonatomic, readonly) int numberOfInputChannels;
 
 /*!
+ * Input channel descriptions
+ *
+ *  Returns an array of strings, each describing the input channel at the
+ *  corresponding index.
+ */
+@property (nonatomic, readonly) NSArray *inputChannelDescriptions;
+
+/*!
  * The audio description defining the input audio format
  * 
  *  Note: This property is observable
@@ -1672,6 +1729,31 @@ BOOL AECurrentThreadIsAudioThread(void);
  *  See also @link inputMode @endlink and @link inputChannelSelection @endlink
  */
 @property (nonatomic, readonly) AudioStreamBasicDescription inputAudioDescription;
+
+/*!
+ * Sets the preferred number of output channels for the current route.
+ */
+@property (nonatomic, assign) int preferredOutputNumberOfChannels;
+
+/*!
+ * The number of audio channels that the current audio output device provides
+ *
+ *  Note that unless you are using the multi-channel output facilities
+ *  (@link setOutputChannelSelection:forChannel: @endlink, etc.), you will
+ *  only be sending audio to the first *n* channels, where *n* is the number of
+ *  channels described by @link audioDescription @endlink.
+ *
+ *  Note: This property is observable
+ */
+@property (nonatomic, readonly) int numberOfOutputChannels;
+
+/*!
+ * Output channel descriptions
+ *
+ *  Returns an array of strings, each describing the output channel at the
+ *  corresponding index.
+ */
+@property (nonatomic, readonly) NSArray *outputChannelDescriptions;
 
 /*!
  * The audio description that the audio controller was setup with

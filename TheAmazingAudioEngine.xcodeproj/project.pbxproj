@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		00FFFB7121BE493000C83D3C /* AEPlaythroughChannel.h in Headers */ = {isa = PBXBuildFile; fileRef = 4CA689BF1542DC8C00AF8DDD /* AEPlaythroughChannel.h */; };
+		00FFFB7221BE493400C83D3C /* AEPlaythroughChannel.m in Sources */ = {isa = PBXBuildFile; fileRef = 4CA689C01542DC8C00AF8DDD /* AEPlaythroughChannel.m */; };
 		17BB5B491BECD1D9007A2892 /* TheAmazingAudioEngine.h in Sources */ = {isa = PBXBuildFile; fileRef = 4CAD569315162822003CE861 /* TheAmazingAudioEngine.h */; };
 		17BB5B4A1BECD1D9007A2892 /* AEAudioController.h in Sources */ = {isa = PBXBuildFile; fileRef = 4CAD56801516281D003CE861 /* AEAudioController.h */; };
 		17BB5B4B1BECD1D9007A2892 /* AEAudioController.m in Sources */ = {isa = PBXBuildFile; fileRef = 4CAD56811516281D003CE861 /* AEAudioController.m */; };
@@ -242,6 +244,7 @@
 		4C49FE31153DC21A008725E0 /* AEAudioFileLoaderOperation.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = AEAudioFileLoaderOperation.m; sourceTree = "<group>"; };
 		4C4B11F216833FDD00A3BA2E /* AEBlockChannel.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AEBlockChannel.h; sourceTree = "<group>"; };
 		4C4B11F316833FDD00A3BA2E /* AEBlockChannel.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = AEBlockChannel.m; sourceTree = "<group>"; };
+		4C55BF50170D1DD900A7DBAE /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		4C698CF8162B02EF008B159D /* README.markdown */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = README.markdown; sourceTree = "<group>"; };
 		4C698CF9162B02EF008B159D /* TPCircularBuffer+AudioBufferList.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "TPCircularBuffer+AudioBufferList.c"; sourceTree = "<group>"; };
 		4C698CFA162B02EF008B159D /* TPCircularBuffer+AudioBufferList.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "TPCircularBuffer+AudioBufferList.h"; sourceTree = "<group>"; };
@@ -343,6 +346,7 @@
 		4C215CED1523A7D500D36CAD /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				4C55BF50170D1DD900A7DBAE /* AVFoundation.framework */,
 				4C23245915AC5FE800038EC0 /* QuartzCore.framework */,
 				4C23245515AC5FDA00038EC0 /* Accelerate.framework */,
 				4C23245615AC5FDA00038EC0 /* AudioToolbox.framework */,
@@ -540,6 +544,7 @@
 				F9C23C1E1BA979050060718F /* AEMessageQueue.h in Headers */,
 				4C13AA9B1BB0FC9900DE05E0 /* AEMemoryBufferPlayer.h in Headers */,
 				4C2886381556FC620074175A /* AEAudioController+Audiobus.h in Headers */,
+				00FFFB7121BE493000C83D3C /* AEPlaythroughChannel.h in Headers */,
 				4C215D131523A94200D36CAD /* AEAudioController.h in Headers */,
 				4C49FE32153DC21A008725E0 /* AEAudioFileLoaderOperation.h in Headers */,
 				4C215D141523A94200D36CAD /* AEAudioFilePlayer.h in Headers */,
@@ -778,6 +783,7 @@
 				4C70F99F1BB0D2FE0064CF73 /* AEDelayFilter.m in Sources */,
 				4C70F9B11BB0D2FE0064CF73 /* AEPeakLimiterFilter.m in Sources */,
 				4C70F9B71BB0D2FE0064CF73 /* AEVarispeedFilter.m in Sources */,
+				00FFFB7221BE493400C83D3C /* AEPlaythroughChannel.m in Sources */,
 				4C70F9A91BB0D2FE0064CF73 /* AELowPassFilter.m in Sources */,
 				4C70F9A11BB0D2FE0064CF73 /* AEDistortionFilter.m in Sources */,
 				4C49FE34153DC21A008725E0 /* AEAudioFileLoaderOperation.m in Sources */,

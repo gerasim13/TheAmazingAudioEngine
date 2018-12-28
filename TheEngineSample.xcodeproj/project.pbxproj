@@ -393,7 +393,8 @@
 				4C50FF2D1B75936000E56620 /* ViewController.m */,
 				7A8D22F71B72AF5C0054D2B2 /* Supporting Files */,
 			);
-			path = TheEngineSampleOSX;
+			name = TheEngineSampleOSX;
+			path = "TheEngineSample/OS X";
 			sourceTree = "<group>";
 		};
 		7A8D22F71B72AF5C0054D2B2 /* Supporting Files */ = {
@@ -455,6 +456,9 @@
 				LastUpgradeCheck = 1010;
 				ORGANIZATIONNAME = "A Tasty Pixel";
 				TargetAttributes = {
+					4C0C24841599FADD00D23E13 = {
+						DevelopmentTeam = TCX8UVN898;
+					};
 					7A8D22F41B72AF5C0054D2B2 = {
 						CreatedOnToolsVersion = 6.4;
 					};
@@ -700,6 +704,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_OBJC_ARC = YES;
+				DEVELOPMENT_TEAM = TCX8UVN898;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "TheEngineSample/iOS/TheEngineSample-Prefix.pch";
 				HEADER_SEARCH_PATHS = TheAmazingAudioEngine;
@@ -716,6 +721,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_OBJC_ARC = YES;
+				DEVELOPMENT_TEAM = TCX8UVN898;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "TheEngineSample/iOS/TheEngineSample-Prefix.pch";
 				HEADER_SEARCH_PATHS = TheAmazingAudioEngine;
