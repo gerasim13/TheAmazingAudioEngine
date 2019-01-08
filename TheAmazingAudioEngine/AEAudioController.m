@@ -1521,9 +1521,11 @@ BOOL AEAudioControllerRenderBus(AEAudioController *audioController,
 {
     BOOL automaticLatencyManagement = audioController->_automaticLatencyManagement;
     BOOL inputEnabled = audioController->_inputEnabled;
+    BOOL monitoringEnabled = channelGroup->level_monitor_data.monitoringEnabled;
     audioController->_automaticLatencyManagement = NO;
     audioController->_inputEnabled = NO;
-    
+    channelGroup->level_monitor_data.monitoringEnabled = NO;
+
     AudioUnitRenderActionFlags flags = kAudioUnitRenderAction_PreRender;
     topRenderNotifyCallback((__bridge void *)(audioController), &flags, &inTimeStamp, 2, inNumberFrames, ioData);
     // Produce audio
@@ -1539,6 +1541,7 @@ BOOL AEAudioControllerRenderBus(AEAudioController *audioController,
     
     audioController->_automaticLatencyManagement = automaticLatencyManagement;
     audioController->_inputEnabled = inputEnabled;
+    channelGroup->level_monitor_data.monitoringEnabled = monitoringEnabled;
 
     return result == noErr;
 }
