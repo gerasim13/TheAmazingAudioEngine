@@ -39,8 +39,8 @@
     UInt32 _lengthInFrames;
     NSTimeInterval _regionDuration;
     NSTimeInterval _regionStartTime;
-    volatile int32_t _playhead;
-    volatile int32_t _playbackStoppedCallbackScheduled;
+    atomic_int_fast32_t _playhead;
+    atomic_int_fast32_t _playbackStoppedCallbackScheduled;
     atomic_bool _running;
     atomic_bool _loop;
     uint64_t _startTime;
@@ -82,7 +82,7 @@
     _outputDescription = audioController.audioDescription;
     
     double sampleRateScaleFactor = _outputDescription.mSampleRate / (priorOutputSampleRate ? priorOutputSampleRate : _fileDescription.mSampleRate);
-    _playhead = _playhead * sampleRateScaleFactor;
+    atomic_store_explicit(&_playhead, atomic_load_explicit(&_playhead, memory_order_acquire) * sampleRateScaleFactor, memory_order_release);
     self.audioController = audioController;
     
     // Set the file to play
@@ -93,13 +93,14 @@
     // Play the file region
     if ( self.channelIsPlaying ) {
         double outputToSourceSampleRateScale = _fileDescription.mSampleRate / _outputDescription.mSampleRate;
-        [self schedulePlayRegionFromPosition:_playhead * outputToSourceSampleRateScale];
+        [self schedulePlayRegionFromPosition:atomic_load_explicit(&_playhead, memory_order_acquire) * outputToSourceSampleRateScale];
         atomic_store_explicit(&_running, YES, memory_order_release);
     }
 }
 
 - (void)teardown {
-    if ( OSAtomicCompareAndSwap32(YES, NO, &_playbackStoppedCallbackScheduled) ) {
+    int32_t playbackStoppedCallbackScheduled = atomic_load_explicit(&_playbackStoppedCallbackScheduled, memory_order_acquire);
+    if ( atomic_compare_exchange_weak(&_playbackStoppedCallbackScheduled, &playbackStoppedCallbackScheduled, 0) ) {
         // A playback stop callback was scheduled - we need to flush events from the message queue to clear it out
         [self.audioController.messageQueue processMainThreadMessages];
     }
@@ -129,7 +130,7 @@
 }
 
 - (NSTimeInterval)currentTime {
-    return (double)_playhead / (_outputDescription.mSampleRate ? _outputDescription.mSampleRate : _fileDescription.mSampleRate);
+    return (double)atomic_load_explicit(&_playhead, memory_order_acquire) / (_outputDescription.mSampleRate ? _outputDescription.mSampleRate : _fileDescription.mSampleRate);
 }
 
 - (void)setCurrentTime:(NSTimeInterval)currentTime {
@@ -150,7 +151,7 @@
     if ( self.audioUnit ) {
         if ( playing ) {
             double outputToSourceSampleRateScale = _fileDescription.mSampleRate / _outputDescription.mSampleRate;
-            [self schedulePlayRegionFromPosition:_playhead * outputToSourceSampleRateScale];
+            [self schedulePlayRegionFromPosition:atomic_load_explicit(&_playhead, memory_order_acquire) * outputToSourceSampleRateScale];
         } else {
             AECheckOSStatus(AudioUnitReset(self.audioUnit, kAudioUnitScope_Global, 0), "AudioUnitReset");
         }
@@ -166,9 +167,10 @@
         regionDuration = 0;
     }
     _regionDuration = regionDuration;
-
-    if (_playhead < self.regionStartTime || _playhead >= self.regionStartTime + regionDuration) {
-        _playhead = self.regionStartTime * _fileDescription.mSampleRate;
+    
+    int32_t playhead = atomic_load_explicit(&_playhead, memory_order_acquire);
+    if (playhead < self.regionStartTime || playhead >= self.regionStartTime + regionDuration) {
+        playhead = self.regionStartTime * _fileDescription.mSampleRate;
     }
 
     [self schedulePlayRegionFromPosition:(UInt32)(_regionStartTime * _fileDescription.mSampleRate)];
@@ -186,16 +188,17 @@
         regionStartTime = _lengthInFrames / _fileDescription.mSampleRate;
     }
     _regionStartTime = regionStartTime;
-
-    if (_playhead < regionStartTime || _playhead >= regionStartTime + self.regionDuration) {
-        _playhead = self.regionStartTime * _fileDescription.mSampleRate;
+    
+    int32_t playhead = atomic_load_explicit(&_playhead, memory_order_acquire);
+    if (playhead < regionStartTime || playhead >= regionStartTime + self.regionDuration) {
+        playhead = self.regionStartTime * _fileDescription.mSampleRate;
     }
 
     [self schedulePlayRegionFromPosition:(UInt32)(_regionStartTime * _fileDescription.mSampleRate)];
 }
 
 UInt32 AEAudioFilePlayerGetPlayhead(__unsafe_unretained AEAudioFilePlayer * THIS) {
-    return THIS->_playhead;
+    return atomic_load_explicit(&THIS->_playhead, memory_order_acquire);
 }
 
 - (BOOL)loadAudioFileWithURL:(NSURL*)url error:(NSError**)error {
@@ -282,7 +285,7 @@ UInt32 AEAudioFilePlayerGetPlayhead(__unsafe_unretained AEAudioFilePlayer * THIS
     }
     
     double sourceToOutputSampleRateScale = _outputDescription.mSampleRate / _fileDescription.mSampleRate;
-    _playhead = position * sourceToOutputSampleRateScale;
+    atomic_store_explicit(&_playhead, position * sourceToOutputSampleRateScale, memory_order_release);
     
     // Reset the unit, to clear prior schedules
     AECheckOSStatus(AudioUnitReset(audioUnit, kAudioUnitScope_Global, 0), "AudioUnitReset");
@@ -378,9 +381,7 @@ static OSStatus renderCallback(__unsafe_unretained AEAudioFilePlayer *THIS,
     THIS->_superRenderCallback(THIS, audioController, ioActionFlags, &adjustedTime, frames, audio);
     
     // Examine playhead
-    int32_t playhead = THIS->_playhead;
-    int32_t originalPlayhead = THIS->_playhead;
-    
+    int32_t playhead = atomic_load_explicit(&THIS->_playhead, memory_order_acquire);
     UInt32 regionLengthInFrames = ceil(THIS->_regionDuration * THIS->_outputDescription.mSampleRate);
     UInt32 regionStartTimeInFrames = ceil(THIS->_regionStartTime * THIS->_outputDescription.mSampleRate);
     
@@ -398,7 +399,8 @@ static OSStatus renderCallback(__unsafe_unretained AEAudioFilePlayer *THIS,
         playhead = 0;
         
         // Schedule the playback ended callback (if it hasn't been scheduled already)
-        if ( OSAtomicCompareAndSwap32(NO, YES, &THIS->_playbackStoppedCallbackScheduled) ) {
+        int32_t playbackStoppedCallbackScheduled = atomic_load_explicit(&THIS->_playbackStoppedCallbackScheduled, memory_order_acquire);
+        if ( atomic_compare_exchange_weak(&THIS->_playbackStoppedCallbackScheduled, &playbackStoppedCallbackScheduled, 1) ) {
             AEAudioControllerSendAsynchronousMessageToMainThread(THIS->_audioController, AEAudioFilePlayerNotifyCompletion, &THIS, sizeof(AEAudioFilePlayer*));
         }
         
@@ -407,7 +409,7 @@ static OSStatus renderCallback(__unsafe_unretained AEAudioFilePlayer *THIS,
     
     // Update the playhead
     playhead = regionStartTimeInFrames + ((playhead - regionStartTimeInFrames + frames) % regionLengthInFrames);
-    OSAtomicCompareAndSwap32(originalPlayhead, playhead, &THIS->_playhead);
+    atomic_store_explicit(&THIS->_playhead, playhead, memory_order_release);
     
     return noErr;
 }
@@ -418,7 +420,9 @@ static OSStatus renderCallback(__unsafe_unretained AEAudioFilePlayer *THIS,
 
 static void AEAudioFilePlayerNotifyCompletion(void *userInfo, int userInfoLength) {
     AEAudioFilePlayer *THIS = (__bridge AEAudioFilePlayer*)*(void**)userInfo;
-    if ( !OSAtomicCompareAndSwap32(YES, NO, &THIS->_playbackStoppedCallbackScheduled) ) {
+    
+    int32_t playbackStoppedCallbackScheduled = atomic_load_explicit(&THIS->_playbackStoppedCallbackScheduled, memory_order_acquire);
+    if ( atomic_compare_exchange_weak(&THIS->_playbackStoppedCallbackScheduled, &playbackStoppedCallbackScheduled, 0) ) {
         // We've been pre-empted by another scheduled callback: bail for now
         return;
     }

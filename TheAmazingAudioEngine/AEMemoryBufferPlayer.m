@@ -27,12 +27,13 @@
 #import "AEAudioFileLoaderOperation.h"
 #import "AEUtilities.h"
 #import <libkern/OSAtomic.h>
+#import <stdatomic.h>
 
 @interface AEMemoryBufferPlayer () {
     AudioBufferList              *_audio;
     BOOL                          _freeWhenDone;
     UInt32                        _lengthInFrames;
-    volatile int32_t              _playhead;
+    atomic_int_fast32_t           _playhead;
     uint64_t                      _startTime;
 }
 @property (nonatomic, strong) NSURL *url;
@@ -94,13 +95,14 @@
     if ( _lengthInFrames == 0 ) {
         return 0.0;
     } else {
-        return ((double)_playhead / (double)_lengthInFrames) * self.duration;
+        return ((double)atomic_load_explicit(&_playhead, memory_order_acquire) / (double)_lengthInFrames) * self.duration;
     }
 }
 
 -(void)setCurrentTime:(NSTimeInterval)currentTime {
     if (_lengthInFrames == 0) return;
-    _playhead = (int32_t)((currentTime / self.duration) * _lengthInFrames) % _lengthInFrames;
+    int32_t playhead = (int32_t)((currentTime / self.duration) * _lengthInFrames) % _lengthInFrames;
+    atomic_store_explicit(&_playhead, playhead, memory_order_release);
 }
 
 static void notifyLoopRestart(void *userInfo, int length) {
@@ -120,8 +122,7 @@ static void notifyPlaybackStopped(void *userInfo, int length) {
     }
     
     if ( THIS.completionBlock ) THIS.completionBlock();
-    
-    THIS->_playhead = 0;
+    atomic_store_explicit(&THIS->_playhead, 0, memory_order_release);
 }
 
 static OSStatus renderCallback(__unsafe_unretained AEMemoryBufferPlayer *THIS,
@@ -130,11 +131,9 @@ static OSStatus renderCallback(__unsafe_unretained AEMemoryBufferPlayer *THIS,
                                const AudioTimeStamp       *time,
                                UInt32                      frames,
                                AudioBufferList            *audio) {
-    int32_t playhead = THIS->_playhead;
-    int32_t originalPlayhead = playhead;
-    
     if ( !THIS->_channelIsPlaying ) return noErr;
     
+    int32_t playhead = atomic_load_explicit(&THIS->_playhead, memory_order_acquire);
     uint64_t hostTimeAtBufferEnd = time->mHostTime + AEHostTicksFromSeconds((double)frames / THIS->_audioDescription.mSampleRate);
     if ( THIS->_startTime && THIS->_startTime > hostTimeAtBufferEnd ) {
         // Start time not yet reached: emit silence
@@ -208,8 +207,7 @@ static OSStatus renderCallback(__unsafe_unretained AEMemoryBufferPlayer *THIS,
         }
     }
     
-    OSAtomicCompareAndSwap32(originalPlayhead, playhead, &THIS->_playhead);
-    
+    atomic_store_explicit(&THIS->_playhead, playhead, memory_order_release);
     return noErr;
 }
 

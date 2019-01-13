@@ -3621,28 +3621,28 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
     
     if ( _topChannel ) {
         
-        // Setup multirouting
-        if (_preferredOutputNumberOfChannels && _numberOfOutputChannels >= _preferredOutputNumberOfChannels)
-        {
-            UInt32 channelMapSize = sizeof(SInt32) * _numberOfOutputChannels;
-            SInt32 *channelMap = malloc(channelMapSize);
-
-            // Setup io unit
-            memset(channelMap, -1, channelMapSize);
-            for (int i = 0; i < _preferredOutputNumberOfChannels && i < _numberOfOutputChannels; ++i)
-            {
-                channelMap[i] = i;
-            }
-
-            AECheckOSStatus(AudioUnitSetProperty(_ioAudioUnit, kAudioOutputUnitProperty_ChannelMap, kAudioUnitScope_Output, 0, channelMap, channelMapSize), "AudioUnitSetProperty(kAudioOutputUnitProperty_ChannelMap)");
-            // Set bus count
-            UInt32 busCount = _preferredOutputNumberOfChannels;
-            AECheckOSStatus(AudioUnitSetProperty(_topGroup->converterUnit, kAudioUnitProperty_ElementCount, kAudioUnitScope_Output, 0, &busCount, sizeof(busCount)), "AudioUnitSetProperty(kAudioUnitProperty_ElementCount)");
+//        // Setup multirouting
+//        if (_preferredOutputNumberOfChannels && _numberOfOutputChannels >= _preferredOutputNumberOfChannels)
+//        {
+//            UInt32 channelMapSize = sizeof(SInt32) * _numberOfOutputChannels;
+//            SInt32 *channelMap = malloc(channelMapSize);
+//
+//            // Setup io unit
+//            memset(channelMap, -1, channelMapSize);
+//            for (int i = 0; i < _preferredOutputNumberOfChannels && i < _numberOfOutputChannels; ++i)
+//            {
+//                channelMap[i] = i;
+//            }
+//
+//            AECheckOSStatus(AudioUnitSetProperty(_ioAudioUnit, kAudioOutputUnitProperty_ChannelMap, kAudioUnitScope_Output, 0, channelMap, channelMapSize), "AudioUnitSetProperty(kAudioOutputUnitProperty_ChannelMap)");
+//            // Set bus count
 //            UInt32 busCount = _preferredOutputNumberOfChannels;
-//            AECheckOSStatus(AudioUnitSetProperty(_topGroup->mixerAudioUnit, kAudioUnitProperty_ElementCount, kAudioUnitScope_Output, 0, &busCount, sizeof(busCount)), "AudioUnitSetProperty(kAudioUnitProperty_ElementCount)");
-
-            free(channelMap);
-        }
+//            AECheckOSStatus(AudioUnitSetProperty(_topGroup->converterUnit, kAudioUnitProperty_ElementCount, kAudioUnitScope_Output, 0, &busCount, sizeof(busCount)), "AudioUnitSetProperty(kAudioUnitProperty_ElementCount)");
+////            UInt32 busCount = _preferredOutputNumberOfChannels;
+////            AECheckOSStatus(AudioUnitSetProperty(_topGroup->mixerAudioUnit, kAudioUnitProperty_ElementCount, kAudioUnitScope_Output, 0, &busCount, sizeof(busCount)), "AudioUnitSetProperty(kAudioUnitProperty_ElementCount)");
+//
+//            free(channelMap);
+//        }
         
         // Reconfigure graph
         [self configureChannelsForGroup:NULL];
