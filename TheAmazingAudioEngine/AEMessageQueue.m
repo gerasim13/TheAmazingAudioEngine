@@ -68,7 +68,7 @@ static const NSTimeInterval kSynchronousTimeoutInterval  = 1.0;
     TPCircularBuffer    _realtimeThreadMessageBuffer;
     TPCircularBuffer    _mainThreadMessageBuffer;
     AEMessageQueuePollThread *_pollThread;
-    int                 _pendingResponses;
+    atomic_int_fast32_t       _pendingResponses;
 }
 
 - (instancetype)initWithMessageBufferLength:(int32_t)numBytes {
@@ -219,8 +219,8 @@ void AEMessageQueueProcessMessagesOnRealtimeThread(__unsafe_unretained AEMessage
             ((__bridge void(^)(void))message->responseBlock)();
             CFBridgingRelease(message->responseBlock);
             
-            _pendingResponses--;
-            if ( _pollThread && _pendingResponses == 0 ) {
+            atomic_fetch_sub_explicit(&_pendingResponses, 1, memory_order_release);
+            if ( _pollThread && atomic_load_explicit(&_pendingResponses, memory_order_acquire) <= 0 ) {
                 _pollThread.pollInterval = kIdleMessagingPollDuration;
             }
         } else if ( message->handler ) {
@@ -250,8 +250,8 @@ void AEMessageQueueProcessMessagesOnRealtimeThread(__unsafe_unretained AEMessage
         }
         
         if ( responseBlock ) {
-            _pendingResponses++;
-            
+            atomic_fetch_add_explicit(&_pendingResponses, 1, memory_order_release);
+
             if ( _pollThread.pollInterval == kIdleMessagingPollDuration ) {
                 // Perform more rapid active polling while we expect a response
                 _pollThread.pollInterval = kActiveMessagingPollDuration;
