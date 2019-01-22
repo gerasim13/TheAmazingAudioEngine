@@ -403,8 +403,6 @@ static OSStatus renderCallback(__unsafe_unretained AEAudioFilePlayer *THIS,
         if ( atomic_compare_exchange_weak(&THIS->_playbackStoppedCallbackScheduled, &playbackStoppedCallbackScheduled, 1) ) {
             AEAudioControllerSendAsynchronousMessageToMainThread(THIS->_audioController, AEAudioFilePlayerNotifyCompletion, &THIS, sizeof(AEAudioFilePlayer*));
         }
-        
-        atomic_store_explicit(&THIS->_running, NO, memory_order_release);
     }
     
     // Update the playhead
@@ -420,9 +418,10 @@ static OSStatus renderCallback(__unsafe_unretained AEAudioFilePlayer *THIS,
 
 static void AEAudioFilePlayerNotifyCompletion(void *userInfo, int userInfoLength) {
     AEAudioFilePlayer *THIS = (__bridge AEAudioFilePlayer*)*(void**)userInfo;
+    atomic_store_explicit(&THIS->_running, NO, memory_order_release);
     
     int32_t playbackStoppedCallbackScheduled = atomic_load_explicit(&THIS->_playbackStoppedCallbackScheduled, memory_order_acquire);
-    if ( atomic_compare_exchange_weak(&THIS->_playbackStoppedCallbackScheduled, &playbackStoppedCallbackScheduled, 0) ) {
+    if ( !atomic_compare_exchange_weak(&THIS->_playbackStoppedCallbackScheduled, &playbackStoppedCallbackScheduled, 0) ) {
         // We've been pre-empted by another scheduled callback: bail for now
         return;
     }
