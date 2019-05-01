@@ -65,7 +65,7 @@ static Float32 __cachedInputLatency = kNoValue;
 static Float32 __cachedOutputLatency = kNoValue;
 #endif
 
-static pthread_t __audioThread = NULL;
+static _Atomic(pthread_t) __audioThread = NULL;
 
 NSString * const AEAudioControllerSessionInterruptionBeganNotification = @"com.theamazingaudioengine.AEAudioControllerSessionInterruptionBeganNotification";
 NSString * const AEAudioControllerSessionInterruptionEndedNotification = @"com.theamazingaudioengine.AEAudioControllerSessionInterruptionEndedNotification";
@@ -222,7 +222,7 @@ typedef struct _channel_group_t {
     AUGraph             _audioGraph;
     AUNode              _ioNode;
     AudioUnit           _ioAudioUnit;
-    BOOL                _started;
+    atomic_bool         _started;
     BOOL                _interrupted;
     BOOL                _hasSystemError;
     BOOL                _updatingInputStatus;
@@ -230,8 +230,9 @@ typedef struct _channel_group_t {
     AudioUnit           _iAudioUnit;
 #endif
     
-    AEChannelGroupRef _Atomic _topGroup;
-    AEChannelRef      _Atomic _topChannel;
+    _Atomic(AEChannelGroupRef) _topGroup;
+    _Atomic(AEChannelRef)      _topChannel;
+    _Atomic(AEChannelRef)      _channelBeingRendered;
     
     callback_table_t    _timingCallbacks;
     
@@ -247,12 +248,13 @@ typedef struct _channel_group_t {
     AudioTimeStamp      _lastInputOrOutputBusTimeStamp;
 
     audio_level_monitor_t _inputLevelMonitorData;
-    BOOL                _usingAudiobusInput;
-    AEChannelRef        _channelBeingRendered;
+    BOOL                  _usingAudiobusInput;
+    
     
     AudioBufferList    *_audiobusMonitorBuffer;
-
     BOOL                _useHardwareSampleRate;
+    atomic_bool         _automaticLatencyManagement;
+    atomic_bool         _inputEnabled;
 
 #ifdef DEBUG
     uint64_t            _firstRenderTime;
@@ -278,8 +280,9 @@ typedef struct _channel_group_t {
 @implementation AEAudioController
 #if TARGET_OS_IPHONE
 @synthesize audioSessionCategory = _audioSessionCategory, audioUnit = _ioAudioUnit;
+@dynamic automaticLatencyManagement;
 #endif
-@dynamic running, audioInputAvailable, inputGainAvailable, inputGain, audiobusSenderPort, inputAudioDescription, inputChannelSelection;
+@dynamic running, audioInputAvailable, inputGainAvailable, inputGain, audiobusSenderPort, inputAudioDescription, inputChannelSelection, inputEnabled;
 
 #pragma mark -
 #pragma mark Input and render callbacks
@@ -403,13 +406,13 @@ static OSStatus renderCallback(void *inRefCon, AudioUnitRenderActionFlags *ioAct
         .nextFilterIndex = 0
     };
     
-    THIS->_channelBeingRendered = channel;
+    atomic_store_explicit(&THIS->_channelBeingRendered, channel, memory_order_release);
     
     OSStatus result = channelAudioProducer((void*)&arg, ioData, &inNumberFrames);
     
     handleCallbacksForChannel(channel, &timestamp, ioActionFlags, inNumberFrames, ioData);
     
-    THIS->_channelBeingRendered = NULL;
+    atomic_store_explicit(&THIS->_channelBeingRendered, NULL, memory_order_release);
     
     void *audiobusSenderPort = atomic_load_explicit(&channel->audiobusSenderPort, memory_order_acquire);
     void *audiobusFloatConverter = atomic_load_explicit(&channel->audiobusFloatConverter, memory_order_acquire);
@@ -541,11 +544,11 @@ static OSStatus groupRenderNotifyCallback(void *inRefCon, AudioUnitRenderActionF
     
     if ( !(*ioActionFlags & kAudioUnitRenderAction_PreRender) ) {
         // After render
-        THIS->_channelBeingRendered = channel;
+        atomic_store_explicit(&THIS->_channelBeingRendered, channel, memory_order_release);
         
         handleCallbacksForChannel(channel, inTimeStamp, ioActionFlags, inNumberFrames, ioData);
         
-        THIS->_channelBeingRendered = NULL;
+        atomic_store_explicit(&THIS->_channelBeingRendered, NULL, memory_order_release);
         
         if ( group->level_monitor_data.monitoringEnabled ) {
             performLevelMonitoring(&group->level_monitor_data, ioData, inNumberFrames);
@@ -2137,6 +2140,17 @@ BOOL AECurrentThreadIsAudioThread(void) {
         [self updateInputDeviceStatus];
     }
 }
+
+- (void)setAutomaticLatencyManagement:(BOOL)automaticLatencyManagement
+{
+    atomic_store_explicit(&_automaticLatencyManagement, automaticLatencyManagement, memory_order_release);
+}
+
+- (BOOL)automaticLatencyManagement
+{
+    return atomic_load_explicit(&_automaticLatencyManagement, memory_order_acquire);
+}
+
 #endif
 
 -(void)setMasterOutputVolume:(float)masterOutputVolume {
@@ -2155,6 +2169,16 @@ BOOL AECurrentThreadIsAudioThread(void) {
     } else {
         return NO;
     }
+}
+
+- (void)setInputEnabled:(BOOL)inputEnabled
+{
+    atomic_store_explicit(&_inputEnabled, inputEnabled, memory_order_release);
+}
+
+- (BOOL)inputEnabled
+{
+    return atomic_load_explicit(&_inputEnabled, memory_order_acquire);
 }
 
 #if TARGET_OS_IPHONE
@@ -2308,7 +2332,7 @@ NSTimeInterval AEAudioControllerInputLatency(__unsafe_unretained AEAudioControll
 NSTimeInterval AEAudioControllerOutputLatency(__unsafe_unretained AEAudioController *THIS) {
     
     if ( AECurrentThreadIsAudioThread() ) {
-        AEChannelRef channelBeingRendered = THIS->_channelBeingRendered;
+        AEChannelRef channelBeingRendered = atomic_load_explicit(&THIS->_channelBeingRendered, memory_order_acquire);
         if ( !channelBeingRendered ) channelBeingRendered = THIS->_topChannel;
         
         __unsafe_unretained ABAudioSenderPort * upstreamSenderPort = (__bridge ABAudioSenderPort*)firstUpstreamAudiobusSenderPort(channelBeingRendered);
