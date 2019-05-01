@@ -65,7 +65,7 @@ static Float32 __cachedInputLatency = kNoValue;
 static Float32 __cachedOutputLatency = kNoValue;
 #endif
 
-static pthread_t __audioThread = NULL;
+static _Atomic(pthread_t) __audioThread = NULL;
 
 NSString * const AEAudioControllerSessionInterruptionBeganNotification = @"com.theamazingaudioengine.AEAudioControllerSessionInterruptionBeganNotification";
 NSString * const AEAudioControllerSessionInterruptionEndedNotification = @"com.theamazingaudioengine.AEAudioControllerSessionInterruptionEndedNotification";
@@ -184,10 +184,10 @@ typedef struct __channel_t {
     AudioUnit        converterUnit;
     BOOL             setRenderNotification;
     
-    void             *audioController;
-    void             *audiobusSenderPort;
-    void             *audiobusFloatConverter;
-    AudioBufferList  *audiobusScratchBuffer;
+    void             * _Atomic audioController;
+    void             * _Atomic audiobusSenderPort;
+    void             * _Atomic audiobusFloatConverter;
+    AudioBufferList  * _Atomic audiobusScratchBuffer;
 } channel_t, *AEChannelRef;
 
 /*!
@@ -222,7 +222,7 @@ typedef struct _channel_group_t {
     AUGraph             _audioGraph;
     AUNode              _ioNode;
     AudioUnit           _ioAudioUnit;
-    BOOL                _started;
+    atomic_bool         _started;
     BOOL                _interrupted;
     BOOL                _hasSystemError;
     BOOL                _updatingInputStatus;
@@ -230,8 +230,9 @@ typedef struct _channel_group_t {
     AudioUnit           _iAudioUnit;
 #endif
     
-    AEChannelGroupRef _Atomic _topGroup;
-    AEChannelRef      _Atomic _topChannel;
+    _Atomic(AEChannelGroupRef) _topGroup;
+    _Atomic(AEChannelRef)      _topChannel;
+    _Atomic(AEChannelRef)      _channelBeingRendered;
     
     callback_table_t    _timingCallbacks;
     
@@ -247,12 +248,13 @@ typedef struct _channel_group_t {
     AudioTimeStamp      _lastInputOrOutputBusTimeStamp;
 
     audio_level_monitor_t _inputLevelMonitorData;
-    BOOL                _usingAudiobusInput;
-    AEChannelRef        _channelBeingRendered;
+    BOOL                  _usingAudiobusInput;
+    
     
     AudioBufferList    *_audiobusMonitorBuffer;
-
     BOOL                _useHardwareSampleRate;
+    atomic_bool         _automaticLatencyManagement;
+    atomic_bool         _inputEnabled;
 
 #ifdef DEBUG
     uint64_t            _firstRenderTime;
@@ -278,8 +280,9 @@ typedef struct _channel_group_t {
 @implementation AEAudioController
 #if TARGET_OS_IPHONE
 @synthesize audioSessionCategory = _audioSessionCategory, audioUnit = _ioAudioUnit;
+@dynamic automaticLatencyManagement;
 #endif
-@dynamic running, audioInputAvailable, inputGainAvailable, inputGain, audiobusSenderPort, inputAudioDescription, inputChannelSelection;
+@dynamic running, audioInputAvailable, inputGainAvailable, inputGain, audiobusSenderPort, inputAudioDescription, inputChannelSelection, inputEnabled;
 
 #pragma mark -
 #pragma mark Input and render callbacks
@@ -403,45 +406,50 @@ static OSStatus renderCallback(void *inRefCon, AudioUnitRenderActionFlags *ioAct
         .nextFilterIndex = 0
     };
     
-    THIS->_channelBeingRendered = channel;
+    atomic_store_explicit(&THIS->_channelBeingRendered, channel, memory_order_release);
     
     OSStatus result = channelAudioProducer((void*)&arg, ioData, &inNumberFrames);
     
     handleCallbacksForChannel(channel, &timestamp, ioActionFlags, inNumberFrames, ioData);
     
-    THIS->_channelBeingRendered = NULL;
+    atomic_store_explicit(&THIS->_channelBeingRendered, NULL, memory_order_release);
     
-    if ( channel->audiobusSenderPort && ABAudioSenderPortIsConnected((__bridge id)channel->audiobusSenderPort) && channel->audiobusFloatConverter ) {
+    void *audiobusSenderPort = atomic_load_explicit(&channel->audiobusSenderPort, memory_order_acquire);
+    void *audiobusFloatConverter = atomic_load_explicit(&channel->audiobusFloatConverter, memory_order_acquire);
+    AudioBufferList  *audiobusScratchBuffer = atomic_load_explicit(&channel->audiobusScratchBuffer, memory_order_acquire);
+    
+    if ( audiobusSenderPort && audiobusFloatConverter && audiobusScratchBuffer && ABAudioSenderPortIsConnected((__bridge id)audiobusSenderPort) )
+    {
         // Convert the audio to float, and apply volume/pan if necessary
-        if ( AEFloatConverterToFloatBufferList((__bridge AEFloatConverter*)channel->audiobusFloatConverter, ioData, channel->audiobusScratchBuffer, inNumberFrames) ) {
+        if ( AEFloatConverterToFloatBufferList((__bridge AEFloatConverter*)audiobusFloatConverter, ioData, audiobusScratchBuffer, inNumberFrames) ) {
             if ( fabs(1.0 - channel->volume) > 0.01 || fabs(0.0 - channel->pan) > 0.01 ) {
                 float volume = channel->volume;
-                for ( int i=0; i<channel->audiobusScratchBuffer->mNumberBuffers; i++ ) {
-                    float gain = (channel->audiobusScratchBuffer->mNumberBuffers == 2 ?
+                for ( int i=0; i<audiobusScratchBuffer->mNumberBuffers; i++ ) {
+                    float gain = (audiobusScratchBuffer->mNumberBuffers == 2 ?
                                   i == 0 ? (channel->pan <= 0.0 ? 1.0 : 1.0-channel->pan) :
                                   i == 1 ? (channel->pan >= 0.0 ? 1.0 : 1.0+channel->pan) :
                                   1 : 1) * volume;
-                    vDSP_vsmul(channel->audiobusScratchBuffer->mBuffers[i].mData, 1, &gain, channel->audiobusScratchBuffer->mBuffers[i].mData, 1, inNumberFrames);
+                    vDSP_vsmul(audiobusScratchBuffer->mBuffers[i].mData, 1, &gain, audiobusScratchBuffer->mBuffers[i].mData, 1, inNumberFrames);
                 }
             }
         }
         
         // Send via Audiobus
-        ABAudioSenderPortSend((__bridge id)channel->audiobusSenderPort, channel->audiobusScratchBuffer, inNumberFrames, &timestamp);
+        ABAudioSenderPortSend((__bridge id)audiobusSenderPort, audiobusScratchBuffer, inNumberFrames, &timestamp);
         
-        if ( !ABAudioSenderPortIsMuted((__bridge id)channel->audiobusSenderPort)
+        if ( !ABAudioSenderPortIsMuted((__bridge id)audiobusSenderPort)
                 && upstreamChannelsMutedByAudiobus(channel)
                 && THIS->_audiobusMonitorBuffer ) {
             
             // Mix with monitoring buffer, as we need to monitor this channel but an upstream channel is muted by Audiobus
             AudioBufferList *monitorBuffer = THIS->_audiobusMonitorBuffer;
-            for ( int i=0; i<MIN(monitorBuffer->mNumberBuffers, channel->audiobusScratchBuffer->mNumberBuffers); i++ ) {
-                vDSP_vadd((float*)monitorBuffer->mBuffers[i].mData, 1, (float*)channel->audiobusScratchBuffer->mBuffers[i].mData, 1, (float*)monitorBuffer->mBuffers[i].mData, 1, MIN(inNumberFrames, kMaxFramesPerSlice));
+            for ( int i=0; i<MIN(monitorBuffer->mNumberBuffers, audiobusScratchBuffer->mNumberBuffers); i++ ) {
+                vDSP_vadd((float*)monitorBuffer->mBuffers[i].mData, 1, (float*)audiobusScratchBuffer->mBuffers[i].mData, 1, (float*)monitorBuffer->mBuffers[i].mData, 1, MIN(inNumberFrames, kMaxFramesPerSlice));
             }
         }
     }
     
-    if ( channel->audiobusSenderPort && ABAudioSenderPortIsMuted((__bridge id)channel->audiobusSenderPort) && !upstreamChannelsConnectedToAudiobus(channel) ) {
+    if ( audiobusSenderPort && ABAudioSenderPortIsMuted((__bridge id)audiobusSenderPort) && !upstreamChannelsConnectedToAudiobus(channel) ) {
         // Silence output
         *ioActionFlags |= kAudioUnitRenderAction_OutputIsSilence;
         for ( int i=0; i<ioData->mNumberBuffers; i++ ) memset(ioData->mBuffers[i].mData, 0, ioData->mBuffers[i].mDataByteSize);
@@ -536,11 +544,11 @@ static OSStatus groupRenderNotifyCallback(void *inRefCon, AudioUnitRenderActionF
     
     if ( !(*ioActionFlags & kAudioUnitRenderAction_PreRender) ) {
         // After render
-        THIS->_channelBeingRendered = channel;
+        atomic_store_explicit(&THIS->_channelBeingRendered, channel, memory_order_release);
         
         handleCallbacksForChannel(channel, inTimeStamp, ioActionFlags, inNumberFrames, ioData);
         
-        THIS->_channelBeingRendered = NULL;
+        atomic_store_explicit(&THIS->_channelBeingRendered, NULL, memory_order_release);
         
         if ( group->level_monitor_data.monitoringEnabled ) {
             performLevelMonitoring(&group->level_monitor_data, ioData, inNumberFrames);
@@ -1516,9 +1524,11 @@ BOOL AEAudioControllerRenderBus(AEAudioController *audioController,
 {
     BOOL automaticLatencyManagement = audioController->_automaticLatencyManagement;
     BOOL inputEnabled = audioController->_inputEnabled;
+    BOOL monitoringEnabled = channelGroup->level_monitor_data.monitoringEnabled;
     audioController->_automaticLatencyManagement = NO;
     audioController->_inputEnabled = NO;
-    
+    channelGroup->level_monitor_data.monitoringEnabled = NO;
+
     AudioUnitRenderActionFlags flags = kAudioUnitRenderAction_PreRender;
     topRenderNotifyCallback((__bridge void *)(audioController), &flags, &inTimeStamp, 2, inNumberFrames, ioData);
     // Produce audio
@@ -1534,6 +1544,7 @@ BOOL AEAudioControllerRenderBus(AEAudioController *audioController,
     
     audioController->_automaticLatencyManagement = automaticLatencyManagement;
     audioController->_inputEnabled = inputEnabled;
+    channelGroup->level_monitor_data.monitoringEnabled = monitoringEnabled;
 
     return result == noErr;
 }
@@ -2129,6 +2140,17 @@ BOOL AECurrentThreadIsAudioThread(void) {
         [self updateInputDeviceStatus];
     }
 }
+
+- (void)setAutomaticLatencyManagement:(BOOL)automaticLatencyManagement
+{
+    atomic_store_explicit(&_automaticLatencyManagement, automaticLatencyManagement, memory_order_release);
+}
+
+- (BOOL)automaticLatencyManagement
+{
+    return atomic_load_explicit(&_automaticLatencyManagement, memory_order_acquire);
+}
+
 #endif
 
 -(void)setMasterOutputVolume:(float)masterOutputVolume {
@@ -2147,6 +2169,16 @@ BOOL AECurrentThreadIsAudioThread(void) {
     } else {
         return NO;
     }
+}
+
+- (void)setInputEnabled:(BOOL)inputEnabled
+{
+    atomic_store_explicit(&_inputEnabled, inputEnabled, memory_order_release);
+}
+
+- (BOOL)inputEnabled
+{
+    return atomic_load_explicit(&_inputEnabled, memory_order_acquire);
 }
 
 #if TARGET_OS_IPHONE
@@ -2300,7 +2332,7 @@ NSTimeInterval AEAudioControllerInputLatency(__unsafe_unretained AEAudioControll
 NSTimeInterval AEAudioControllerOutputLatency(__unsafe_unretained AEAudioController *THIS) {
     
     if ( AECurrentThreadIsAudioThread() ) {
-        AEChannelRef channelBeingRendered = THIS->_channelBeingRendered;
+        AEChannelRef channelBeingRendered = atomic_load_explicit(&THIS->_channelBeingRendered, memory_order_acquire);
         if ( !channelBeingRendered ) channelBeingRendered = THIS->_topChannel;
         
         __unsafe_unretained ABAudioSenderPort * upstreamSenderPort = (__bridge ABAudioSenderPort*)firstUpstreamAudiobusSenderPort(channelBeingRendered);
@@ -2353,7 +2385,7 @@ AudioTimeStamp AEAudioControllerCurrentAudioTimestamp(__unsafe_unretained AEAudi
 }
 
 -(void)setAudiobusSenderPort:(ABAudioSenderPort *)audiobusSenderPort {
-    if ( _topChannel->audiobusSenderPort == (__bridge void *)audiobusSenderPort ) return;
+    if ( atomic_load_explicit(&_topChannel->audiobusSenderPort, memory_order_acquire) == (__bridge void *)audiobusSenderPort ) return;
     
     if ( [(id<AEAudiobusForwardDeclarationsProtocol>)audiobusSenderPort audioUnit] == _ioAudioUnit ) {
         NSLog(@"TAAE: You cannot use ABAudioSenderPort's audio unit initialiser with TAAE.\n"
@@ -2366,11 +2398,11 @@ AudioTimeStamp AEAudioControllerCurrentAudioTimestamp(__unsafe_unretained AEAudi
 }
 
 - (ABAudioSenderPort*)audiobusSenderPort {
-    return (__bridge ABAudioSenderPort *)(_topChannel->audiobusSenderPort);
+    return (__bridge ABAudioSenderPort *)(atomic_load_explicit(&_topChannel->audiobusSenderPort, memory_order_acquire));
 }
 
 -(void)setAudiobusSenderPort:(ABAudioSenderPort *)audiobusSenderPort forChannelElement:(AEChannelRef)channelElement {
-    if ( channelElement->audiobusSenderPort == (__bridge void*)audiobusSenderPort ) return;
+    if ( atomic_load_explicit(&channelElement->audiobusSenderPort, memory_order_acquire) == (__bridge void*)audiobusSenderPort ) return;
     
     if ( [(id<AEAudiobusForwardDeclarationsProtocol>)audiobusSenderPort audioUnit] == _ioAudioUnit ) {
         NSLog(@"TAAE: You cannot use ABAudioSenderPort's audio unit initialiser with TAAE.");
@@ -2392,7 +2424,7 @@ AudioTimeStamp AEAudioControllerCurrentAudioTimestamp(__unsafe_unretained AEAudi
     
     if ( audiobusSenderPort == nil ) {
         [self performAsynchronousMessageExchangeWithBlock:^{
-            channelElement->audiobusSenderPort = nil;
+            atomic_store_explicit(&channelElement->audiobusSenderPort, nil, memory_order_release);
         } responseBlock:^{
             AEFreeAudioBufferList(channelElement->audiobusScratchBuffer);
             channelElement->audiobusScratchBuffer = NULL;
@@ -2408,9 +2440,8 @@ AudioTimeStamp AEAudioControllerCurrentAudioTimestamp(__unsafe_unretained AEAudi
         }
         [(id<AEAudiobusForwardDeclarationsProtocol>)audiobusSenderPort setClientFormat:((__bridge AEFloatConverter*)channelElement->audiobusFloatConverter).floatingPointAudioDescription];
         
-        OSMemoryBarrier();
-        
-        channelElement->audiobusSenderPort = (__bridge_retained void*)audiobusSenderPort;
+        atomic_thread_fence(memory_order_relaxed);
+        atomic_store_explicit(&channelElement->audiobusSenderPort, (__bridge_retained void*)audiobusSenderPort, memory_order_release);
         
         if ( channelElement->type == kChannelTypeGroup ) {
             AEChannelGroupRef parentGroup = NULL;
@@ -3618,7 +3649,6 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
     }
     
     if ( _topChannel ) {
-        
         // Setup multirouting
         if (_preferredOutputNumberOfChannels && _numberOfOutputChannels >= _preferredOutputNumberOfChannels)
         {
@@ -3935,7 +3965,7 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
             AUNode sourceNode = subgroup->converterNode ? subgroup->converterNode : subgroup->mixerNode;
             AudioUnit sourceUnit = subgroup->converterUnit ? subgroup->converterUnit : subgroup->mixerAudioUnit;
             
-            if ( hasFilters || channel->audiobusSenderPort ) {
+            if ( hasFilters || atomic_load_explicit(&channel->audiobusSenderPort, memory_order_acquire) ) {
                 // We need to use our own render callback, because we're either filtering, or sending via Audiobus (and we may need to adjust timestamp)
                 
                 if ( channel->setRenderNotification ) {
@@ -4163,13 +4193,21 @@ static void removeChannelsFromGroup(__unsafe_unretained AEAudioController *THIS,
         CFBridgingRelease((__bridge CFTypeRef)object);
     }
     
-    if ( channel->audiobusSenderPort ) {
-        CFBridgingRelease(channel->audiobusSenderPort);
-        channel->audiobusSenderPort = NULL;
-        AEAudioBufferListFree(channel->audiobusScratchBuffer);
-        channel->audiobusScratchBuffer = NULL;
-        CFBridgingRelease(channel->audiobusFloatConverter);
-        channel->audiobusFloatConverter = NULL;
+    void *audiobusSenderPort = atomic_load_explicit(&channel->audiobusSenderPort, memory_order_acquire);
+    void *audiobusFloatConverter = atomic_load_explicit(&channel->audiobusFloatConverter, memory_order_acquire);
+    AudioBufferList *audiobusScratchBuffer = atomic_load_explicit(&channel->audiobusScratchBuffer, memory_order_acquire);
+    atomic_store_explicit(&channel->audiobusSenderPort, NULL, memory_order_release);
+    atomic_store_explicit(&channel->audiobusFloatConverter, NULL, memory_order_release);
+    atomic_store_explicit(&channel->audiobusScratchBuffer, NULL, memory_order_release);
+    
+    if ( audiobusSenderPort ) {
+        CFBridgingRelease(audiobusSenderPort);
+    }
+    if ( audiobusFloatConverter ) {
+        CFBridgingRelease(audiobusFloatConverter);
+    }
+    if ( audiobusScratchBuffer ) {
+        AEAudioBufferListFree(audiobusScratchBuffer);
     }
     
     if ( channel->type == kChannelTypeGroup ) {
@@ -4540,7 +4578,7 @@ static void performLevelMonitoring(audio_level_monitor_t* monitor, AudioBufferLi
         monitor->meanAccumulator += avg;
         monitor->meanBlockCount++;
         
-        OSMemoryBarrier();
+        atomic_thread_fence(memory_order_relaxed);
         monitor->chanAverage[i] = monitor->chanMeanAccumulator[i] / (double)monitor->chanMeanBlockCount;
         monitor->average = monitor->meanAccumulator / (double)monitor->meanBlockCount;
     }
@@ -4550,7 +4588,7 @@ static void performLevelMonitoring(audio_level_monitor_t* monitor, AudioBufferLi
     if ( !channel->parentGroup ) return NO;
     
     AEChannelRef parentGroupChannel = channel->parentGroup->channel;
-    if ( parentGroupChannel->audiobusSenderPort ) {
+    if ( atomic_load_explicit(&parentGroupChannel->audiobusSenderPort, memory_order_acquire) ) {
         return YES;
     }
     
@@ -4561,7 +4599,8 @@ static BOOL upstreamChannelsMutedByAudiobus(AEChannelRef channel) {
     if ( !channel->parentGroup ) return NO;
     
     AEChannelRef parentGroupChannel = channel->parentGroup->channel;
-    if ( parentGroupChannel->audiobusSenderPort && ABAudioSenderPortIsMuted((__bridge id)parentGroupChannel->audiobusSenderPort) ) {
+    void *audiobusSenderPort = atomic_load_explicit(&parentGroupChannel->audiobusSenderPort, memory_order_acquire);
+    if ( audiobusSenderPort && ABAudioSenderPortIsMuted((__bridge id)audiobusSenderPort) ) {
         return YES;
     }
     
@@ -4572,7 +4611,8 @@ static BOOL upstreamChannelsConnectedToAudiobus(AEChannelRef channel) {
     if ( !channel->parentGroup ) return NO;
     
     AEChannelRef parentGroupChannel = channel->parentGroup->channel;
-    if ( parentGroupChannel->audiobusSenderPort && ABAudioSenderPortIsConnected((__bridge id)parentGroupChannel->audiobusSenderPort) ) {
+    void *audiobusSenderPort = atomic_load_explicit(&parentGroupChannel->audiobusSenderPort, memory_order_acquire);
+    if ( audiobusSenderPort && ABAudioSenderPortIsConnected((__bridge id)audiobusSenderPort) ) {
         return YES;
     }
     
@@ -4581,8 +4621,9 @@ static BOOL upstreamChannelsConnectedToAudiobus(AEChannelRef channel) {
 
 #if TARGET_OS_IPHONE
 static void * firstUpstreamAudiobusSenderPort(AEChannelRef channel) {
-    if ( channel->audiobusSenderPort ) {
-        return channel->audiobusSenderPort;
+    void *audiobusSenderPort = atomic_load_explicit(&channel->audiobusSenderPort, memory_order_acquire);
+    if ( audiobusSenderPort ) {
+        return audiobusSenderPort;
     }
     
     if ( !channel->parentGroup ) return nil;

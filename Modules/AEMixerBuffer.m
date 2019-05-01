@@ -793,7 +793,7 @@ static UInt32 _AEMixerBufferPeek(__unsafe_unretained AEMixerBuffer *THIS, AudioT
     // Determine lowest buffer fill count, excluding drained sources that we aren't receiving from (for those, we'll return silence),
     // and address sources that are behind the timeline
     uint64_t now = AECurrentTimeInHostTicks();
-    AudioTimeStamp earliestEndTimestamp = { .mHostTime = UINT64_MAX };
+    AudioTimeStamp earliestEndTimestamp = { .mHostTime = 0 };
     AudioTimeStamp latestStartTimestamp = { .mHostTime = 0 };
     source_t *earliestEndSource = NULL;
     UInt32 minFrameCount = UINT32_MAX;
