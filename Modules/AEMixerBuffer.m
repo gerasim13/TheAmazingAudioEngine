@@ -1261,8 +1261,8 @@ static OSStatus sourceInputCallback(void *inRefCon, AudioUnitRenderActionFlags *
 
 - (void)pollActionBuffer {
     while ( 1 ) {
-        int32_t availableBytes;
-        action_t *action = TPCircularBufferTail(&_mainThreadActionBuffer, (uint32_t*)&availableBytes);
+        uint32_t availableBytes;
+        action_t *action = TPCircularBufferTail(&_mainThreadActionBuffer, &availableBytes);
         if ( !action ) break;
         action->action(self, action->userInfo);
         TPCircularBufferConsume(&_mainThreadActionBuffer, sizeof(action_t));
