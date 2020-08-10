@@ -663,6 +663,7 @@
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
+				English,
 				en,
 				Base,
 			);
@@ -913,7 +914,6 @@
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "TheAmazingAudioEngine/TheAmazingAudioEngine-Prefix.pch";
 				GCC_WARN_UNINITIALIZED_AUTOS = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 8.0;
 				OTHER_CFLAGS = (
 					"-DTPCircularBuffer=AECB",
 					"-D_TPCircularBufferInit=_AECBInit",

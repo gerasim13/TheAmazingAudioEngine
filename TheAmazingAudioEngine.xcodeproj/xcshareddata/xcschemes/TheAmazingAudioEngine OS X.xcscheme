@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
-   LastUpgradeVersion = "1010"
+   LastUpgradeVersion = "1020"
    version = "1.3">
    <BuildAction
       parallelizeBuildables = "YES"
@@ -14,9 +14,9 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "7A56870F1B54610900243427"
-               BuildableName = "libTheAmazingAudioEngine OS X.a"
-               BlueprintName = "TheAmazingAudioEngine OS X"
+               BlueprintIdentifier = "4C215CEB1523A7D500D36CAD"
+               BuildableName = "libTheAmazingAudioEngine.a"
+               BlueprintName = "TheAmazingAudioEngine"
                ReferencedContainer = "container:TheAmazingAudioEngine.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -45,9 +45,9 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "7A56870F1B54610900243427"
-            BuildableName = "libTheAmazingAudioEngine OS X.a"
-            BlueprintName = "TheAmazingAudioEngine OS X"
+            BlueprintIdentifier = "4C215CEB1523A7D500D36CAD"
+            BuildableName = "libTheAmazingAudioEngine.a"
+            BlueprintName = "TheAmazingAudioEngine"
             ReferencedContainer = "container:TheAmazingAudioEngine.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
@@ -63,9 +63,9 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "7A56870F1B54610900243427"
-            BuildableName = "libTheAmazingAudioEngine OS X.a"
-            BlueprintName = "TheAmazingAudioEngine OS X"
+            BlueprintIdentifier = "4C215CEB1523A7D500D36CAD"
+            BuildableName = "libTheAmazingAudioEngine.a"
+            BlueprintName = "TheAmazingAudioEngine"
             ReferencedContainer = "container:TheAmazingAudioEngine.xcodeproj">
          </BuildableReference>
       </MacroExpansion>

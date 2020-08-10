@@ -134,14 +134,26 @@ void AEMessageQueueProcessMessagesOnRealtimeThread(__unsafe_unretained AEMessage
     while ( buffer < end ) {
         assert(buffer->userInfoLength == 0);
         
+        // Check for available space for reply on main thread buffer, and bail if insufficient
+        int32_t availableBytes;
+        TPCircularBufferHead(&THIS->_mainThreadMessageBuffer, &availableBytes);
+        if ( availableBytes < sizeof(message_t) ) {
+#ifdef DEBUG
+            NSLog(@"AEMessageBuffer: Integrity problem, insufficient space in main thread messaging buffer");
+#endif
+            pthread_mutex_unlock(&THIS->_mutex);
+            return;
+        }
+        
+        // Process message for realtime thread
         memcpy(&message, buffer, sizeof(message));
         TPCircularBufferConsume(&THIS->_realtimeThreadMessageBuffer, sizeof(message_t));
         
         if ( message.block ) {
             ((__bridge void(^)(void))message.block)();
         }
-
-        int32_t availableBytes;
+        
+        // Write reply to main thread buffer, checking again for available space (above block call may have caused additional writes)
         message_t *reply = TPCircularBufferHead(&THIS->_mainThreadMessageBuffer, &availableBytes);
         if ( availableBytes < sizeof(message_t) ) {
 #ifdef DEBUG
@@ -358,7 +370,7 @@ static BOOL AEMessageQueueHasPendingMainThreadMessages(__unsafe_unretained AEMes
                 if ( AEMessageQueueHasPendingMainThreadMessages(_messageQueue) ) {
                     [_messageQueue performSelectorOnMainThread:@selector(processMainThreadMessages) withObject:nil waitUntilDone:NO];
                 }
-                usleep(self.pollInterval*1.0e6);
+                usleep(_pollInterval*1.0e6);
             }
         }
     }
