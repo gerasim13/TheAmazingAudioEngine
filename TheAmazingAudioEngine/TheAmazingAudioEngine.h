@@ -30,7 +30,19 @@ extern "C" {
 #endif
 
 #import "AEAudioController.h"
+
+#if !TARGET_OS_UIKITFORMAC
 #import "AEAudioController+Audiobus.h"
+#else
+@compatibility_alias ABAudiobusController NSObject;
+@compatibility_alias ABAudioSenderPort NSObject;
+@compatibility_alias ABAudioReceiverPort NSObject;
+@compatibility_alias ABAudioFilterPort NSObject;
+
+@protocol ABAudiobusControllerStateIODelegate<NSObject>
+@end
+#endif
+
 #import "AEAudioFileLoaderOperation.h"
 #import "AEAudioFilePlayer.h"
 #import "AEAudioFileWriter.h"

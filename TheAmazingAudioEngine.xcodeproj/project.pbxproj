@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		00F58D05234120EC00967DCA /* AEPlaythroughChannel.m in Sources */ = {isa = PBXBuildFile; fileRef = 4CA689C01542DC8C00AF8DDD /* AEPlaythroughChannel.m */; };
+		00F58D06234120ED00967DCA /* AEPlaythroughChannel.m in Sources */ = {isa = PBXBuildFile; fileRef = 4CA689C01542DC8C00AF8DDD /* AEPlaythroughChannel.m */; };
+		00FBE72823FB460A0094AA6E /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00FBE72723FB460A0094AA6E /* Accelerate.framework */; };
 		17BB5B491BECD1D9007A2892 /* TheAmazingAudioEngine.h in Sources */ = {isa = PBXBuildFile; fileRef = 4CAD569315162822003CE861 /* TheAmazingAudioEngine.h */; };
 		17BB5B4A1BECD1D9007A2892 /* AEAudioController.h in Sources */ = {isa = PBXBuildFile; fileRef = 4CAD56801516281D003CE861 /* AEAudioController.h */; };
 		17BB5B4B1BECD1D9007A2892 /* AEAudioController.m in Sources */ = {isa = PBXBuildFile; fileRef = 4CAD56811516281D003CE861 /* AEAudioController.m */; };
@@ -213,6 +216,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		00FBE72723FB460A0094AA6E /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.15.sdk/System/Library/Frameworks/Accelerate.framework; sourceTree = DEVELOPER_DIR; };
 		17BB5B401BECD101007A2892 /* libTheAmazingAudioEngine tvOS.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libTheAmazingAudioEngine tvOS.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		17BB5B9C1BECD25D007A2892 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS9.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		4C0944FF16FBD7460054608E /* AEBlockScheduler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AEBlockScheduler.h; sourceTree = "<group>"; };
@@ -329,6 +333,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				00FBE72823FB460A0094AA6E /* Accelerate.framework in Frameworks */,
 				4C215CEF1523A7D500D36CAD /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -347,6 +352,7 @@
 		4C215CED1523A7D500D36CAD /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				00FBE72723FB460A0094AA6E /* Accelerate.framework */,
 				17BB5B9C1BECD25D007A2892 /* Foundation.framework */,
 				7A5687231B5461A000243427 /* Foundation.framework */,
 				4C23245915AC5FE800038EC0 /* QuartzCore.framework */,
@@ -660,11 +666,11 @@
 			};
 			buildConfigurationList = 4CE501861493F82600F23607 /* Build configuration list for PBXProject "TheAmazingAudioEngine" */;
 			compatibilityVersion = "Xcode 3.2";
-			developmentRegion = English;
+			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
-				English,
 				en,
+				Base,
 			);
 			mainGroup = 4CE501811493F82600F23607;
 			productRefGroup = 4CE501901493F82600F23607 /* Products */;
@@ -805,6 +811,7 @@
 				4C99588E16C0825F0011FB01 /* AEAudioUnitFilter.m in Sources */,
 				4C456B8E16D59365008ED99D /* AEBlockAudioReceiver.m in Sources */,
 				4CB2273A1D0E5FD100B1135F /* AERealtimeWatchdog-arm64.s in Sources */,
+				00F58D05234120EC00967DCA /* AEPlaythroughChannel.m in Sources */,
 				F9C23C201BA979050060718F /* AEMessageQueue.m in Sources */,
 				4C09450216FBD7460054608E /* AEBlockScheduler.m in Sources */,
 				4C70F9AF1BB0D2FE0064CF73 /* AEParametricEqFilter.m in Sources */,
@@ -816,6 +823,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				7A5687141B54617200243427 /* AEAudioController.m in Sources */,
+				00F58D06234120ED00967DCA /* AEPlaythroughChannel.m in Sources */,
 				7A5687151B54617200243427 /* AEAudioController+Audiobus.m in Sources */,
 				7A5687161B54617200243427 /* AEAudioFilePlayer.m in Sources */,
 				7A5687171B54617200243427 /* AEAudioFileWriter.m in Sources */,

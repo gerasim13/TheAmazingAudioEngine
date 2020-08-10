@@ -26,8 +26,11 @@
 #import "AEPlaythroughChannel.h"
 #import "TPCircularBuffer.h"
 #import "TPCircularBuffer+AudioBufferList.h"
+
+#if !TARGET_OS_UIKITFORMAC
 #import "AEAudioController+Audiobus.h"
 #import "AEAudioController+AudiobusStub.h"
+#endif
 
 static const int kAudioBufferLength = 16384;
 static const int kSkipThreshold = 2;
@@ -113,7 +116,7 @@ static OSStatus renderCallback(__unsafe_unretained AEPlaythroughChannel *THIS,
 //        if ( nextBuffer->mNumberBuffers == audio->mNumberBuffers ) break;
 //        TPCircularBufferConsumeNextBufferList(&THIS->_buffer);
 //    }
-    
+
     UInt32 fillCount = TPCircularBufferPeek(&THIS->_buffer, NULL, AEAudioControllerAudioDescription(audioController));
     if ( fillCount > frames+kSkipThreshold ) {
         UInt32 skip = fillCount - frames;
@@ -123,7 +126,7 @@ static OSStatus renderCallback(__unsafe_unretained AEPlaythroughChannel *THIS,
                                                 NULL,
                                                 AEAudioControllerAudioDescription(audioController));
     }
-    
+
     TPCircularBufferDequeueBufferListFrames(&THIS->_buffer,
                                             &frames,
                                             audio,
@@ -150,6 +153,7 @@ static OSStatus renderCallback(__unsafe_unretained AEPlaythroughChannel *THIS,
 }
 
 -(void)updateAudiobusConnectedToSelf {
+    #if !TARGET_OS_UIKITFORMAC
     if ( _audioController.audiobusReceiverPort
             && [(id)_audioController.audiobusReceiverPort respondsToSelector:@selector(connectedToSelf)]
             && [(id)_audioController.audiobusReceiverPort respondsToSelector:@selector(setAutomaticMonitoring:)] ) {
@@ -157,6 +161,7 @@ static OSStatus renderCallback(__unsafe_unretained AEPlaythroughChannel *THIS,
         _audiobusConnectedToSelf = [(id<AEAudiobusForwardDeclarationsProtocol>)_audioController.audiobusReceiverPort connectedToSelf];
         [(id<AEAudiobusForwardDeclarationsProtocol>)_audioController.audiobusReceiverPort setAutomaticMonitoring:_audiobusConnectedToSelf];
     }
+    #endif
 }
 
 @end
