@@ -18,28 +18,5 @@ Pod::Spec.new do |s|
   						'TheAmazingAudioEngine/AERealtimeWatchdog*', 
   						'TheAmazingAudioEngine/Library/TPCircularBuffer'
   s.osx.exclude_files = 'Modules/Filters/AEReverbFilter.*'
-  s.compiler_flags    = '-DTPCircularBuffer=AECB',
-  						'-D_TPCircularBufferInit=_AECBInit',
-  						'-DTPCircularBufferCleanup=AECBClean',
-  						'-DTPCircularBufferClear=AECBClear',
-  						'-DTPCircularBufferSetAtomic=AECBSetAtomic',
-  						'-DTPCircularBufferTail=AECBTail',
-  						'-DTPCircularBufferConsume=AECBConsume',
-  						'-DTPCircularBufferHead=AECBHead',
-  						'-DTPCircularBufferProduce=AECBProduce',
-  						'-DTPCircularBufferProduceBytes=AECBProduceBytes',
-  						'-DTPCircularBufferPrepareEmptyAudioBufferList=AECBPrepareEmptyBL',
-  						'-DTPCircularBufferPrepareEmptyAudioBufferListWithAudioFormat=AECBPrepareEmptyBLWithAF',
-  						'-DTPCircularBufferProduceAudioBufferList=AECBProduceBL',
-  						'-DTPCircularBufferCopyAudioBufferList=AECBCopyBL',
-  						'-DTPCircularBufferNextBufferList=AECBNextBL',
-  						'-DTPCircularBufferNextBufferListAfter=AECBNextBLAfter',
-  						'-DTPCircularBufferConsumeNextBufferList=AECBConsumeBL',
-  						'-DTPCircularBufferGetAvailableSpace=AECBGetAvailableSpace',
-  						'-DTPCircularBufferConsumeNextBufferListPartial=AECBConsumeBLPartial',
-  						'-DTPCircularBufferDequeueBufferListFrames=AECBDequeueBLFrames',
-  						'-DTPCircularBufferPeek=AECBPeek',
-  						'-DTPCircularBufferPeekContiguous=AECBPeekContiguous',
-  						'-D_TPCircularBufferPeek=_AECBPeek'
   s.dependency 'TPCircularBuffer'
 end
