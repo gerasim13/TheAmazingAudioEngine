@@ -12,7 +12,6 @@ Pod::Spec.new do |s|
   s.osx.deployment_target = '10.9'
   s.tvos.deployment_target = '9.0'
   s.frameworks        = 'AudioToolbox', 'Accelerate'
-  s.dependency        = 'TPCircularBuffer'
   s.source_files      = 'TheAmazingAudioEngine/**/*.{h,m,c}', 
   						'Modules/**/*.{h,m,c}'
   s.exclude_files     = 'Modules/TPCircularBuffer', 
@@ -42,4 +41,5 @@ Pod::Spec.new do |s|
   						'-DTPCircularBufferPeek=AECBPeek',
   						'-DTPCircularBufferPeekContiguous=AECBPeekContiguous',
   						'-D_TPCircularBufferPeek=_AECBPeek'
+  s.dependency 'TPCircularBuffer'
 end
