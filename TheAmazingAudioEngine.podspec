@@ -16,7 +16,7 @@ Pod::Spec.new do |s|
   						'Modules/**/*.{h,m,c}'
   s.exclude_files     = 'Modules/TPCircularBuffer', 
   						'TheAmazingAudioEngine/AERealtimeWatchdog*', 
-  						'Library/TPCircularBuffer'
+  						'Library/TPCircularBuffer/*.{h,m,c}'
   s.osx.exclude_files = 'Modules/Filters/AEReverbFilter.*'
   s.compiler_flags    = '-DTPCircularBuffer=AECB',
   						'-D_TPCircularBufferInit=_AECBInit',
