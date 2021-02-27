@@ -2627,11 +2627,10 @@ AudioTimeStamp AEAudioControllerCurrentAudioTimestamp(__unsafe_unretained AEAudi
                 }];
             }
         }
+    }
+    else  if ( [keyPath isEqualToString:NSStringFromSelector(@selector(outputNumberOfChannels))] ) {
+        [self updateOutputDeviceStatus];
     } else {
-        if ( [keyPath isEqualToString:NSStringFromSelector(@selector(outputNumberOfChannels))] )
-        {
-            [self updateOutputDeviceStatus];
-        }
         [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
     }
 }
