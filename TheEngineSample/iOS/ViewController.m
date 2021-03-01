@@ -77,28 +77,28 @@ static const int kInputChannelsChangedContext;
         
         if ( _playthrough ) {
             [channelsToRemove addObject:_playthrough];
-            [_audioController removeInputReceiver:_playthrough];
+            [_audioController removeInputReceiver:_playthrough completionBlock:nil];
             self.playthrough = nil;
         }
         
-        [_audioController removeChannels:channelsToRemove];
+        [_audioController removeChannels:channelsToRemove completionBlock:nil];
         
         if ( _limiter ) {
-            [_audioController removeFilter:_limiter];
+            [_audioController removeFilter:_limiter completionBlock:nil];
             self.limiter = nil;
         }
         
         if ( _expander ) {
-            [_audioController removeFilter:_expander];
+            [_audioController removeFilter:_expander completionBlock:nil];
             self.expander = nil;
         }
         
         if ( _reverb ) {
-            [_audioController removeFilter:_reverb];
+            [_audioController removeFilter:_reverb completionBlock:nil];
             self.reverb = nil;
         }
         
-        [_audioController removeChannelGroup:_group];
+        [_audioController removeChannelGroup:_group completionBlock:nil];
         _group = NULL;
         
         if ( _audioUnitFile ) {
@@ -148,11 +148,11 @@ static const int kInputChannelsChangedContext;
         self.audioUnitPlayer = [[AEAudioUnitChannel alloc] initWithComponentDescription:AEAudioComponentDescriptionMake(kAudioUnitManufacturer_Apple, kAudioUnitType_Generator, kAudioUnitSubType_AudioFilePlayer)];
         
         // Create a group for loop1, loop2 and oscillator
-        _group = [_audioController createChannelGroup];
-        [_audioController addChannels:@[_loop1, _loop2, _oscillator] toChannelGroup:_group];
+        _group = [_audioController createChannelGroupWithCompletionBlock:nil];
+        [_audioController addChannels:@[_loop1, _loop2, _oscillator] toChannelGroup:_group completionBlock:nil];
         
         // Finally, add the audio unit player
-        [_audioController addChannels:@[_audioUnitPlayer]];
+        [_audioController addChannels:@[_audioUnitPlayer] completionBlock:nil];
         
         // Multiroute selection
         if (_audioController.numberOfOutputChannels >= 4) {
@@ -180,14 +180,14 @@ static const int kInputChannelsChangedContext;
     self.outputOscilloscope = [[TPOscilloscopeLayer alloc] initWithAudioDescription:_audioController.audioDescription];
     _outputOscilloscope.frame = CGRectMake(0, 0, headerView.bounds.size.width, 80);
     [headerView.layer addSublayer:_outputOscilloscope];
-    [_audioController addOutputReceiver:_outputOscilloscope];
+    [_audioController addOutputReceiver:_outputOscilloscope completionBlock:nil];
     [_outputOscilloscope start];
     
     self.inputOscilloscope = [[TPOscilloscopeLayer alloc] initWithAudioDescription:_audioController.audioDescription];
     _inputOscilloscope.frame = CGRectMake(0, 0, headerView.bounds.size.width, 80);
     _inputOscilloscope.lineColor = [UIColor colorWithWhite:0.0 alpha:0.3];
     [headerView.layer addSublayer:_inputOscilloscope];
-    [_audioController addInputReceiver:_inputOscilloscope];
+    [_audioController addInputReceiver:_inputOscilloscope completionBlock:nil];
     [_inputOscilloscope start];
     
     self.inputLevelLayer = [CALayer layer];
@@ -500,7 +500,7 @@ static const int kInputChannelsChangedContext;
 
 - (void)oneshotPlayButtonPressed:(UIButton*)sender {
     if ( _oneshot ) {
-        [_audioController removeChannels:@[_oneshot]];
+        [_audioController removeChannels:@[_oneshot] completionBlock:nil];
         self.oneshot = nil;
         _oneshotButton.selected = NO;
     } else {
@@ -512,7 +512,7 @@ static const int kInputChannelsChangedContext;
             strongSelf.oneshot = nil;
             strongSelf->_oneshotButton.selected = NO;
         };
-        [_audioController addChannels:@[_oneshot]];
+        [_audioController addChannels:@[_oneshot] completionBlock:nil];
         _oneshotButton.selected = YES;
     }
 }
@@ -570,11 +570,11 @@ static const int kInputChannelsChangedContext;
 - (void)playthroughSwitchChanged:(UISwitch*)sender {
     if ( sender.isOn ) {
         self.playthrough = [[AEPlaythroughChannel alloc] init];
-        [_audioController addInputReceiver:_playthrough];
-        [_audioController addChannels:@[_playthrough]];
+        [_audioController addInputReceiver:_playthrough completionBlock:nil];
+        [_audioController addChannels:@[_playthrough] completionBlock:nil];
     } else {
-        [_audioController removeChannels:@[_playthrough]];
-        [_audioController removeInputReceiver:_playthrough];
+        [_audioController removeChannels:@[_playthrough] completionBlock:nil];
+        [_audioController removeInputReceiver:_playthrough completionBlock:nil];
         self.playthrough = nil;
     }
 }
@@ -604,9 +604,9 @@ static const int kInputChannelsChangedContext;
     if ( sender.isOn ) {
         self.limiter = [[AELimiterFilter alloc] init];
         _limiter.level = 0.1;
-        [_audioController addFilter:_limiter];
+        [_audioController addFilter:_limiter completionBlock:nil];
     } else {
-        [_audioController removeFilter:_limiter];
+        [_audioController removeFilter:_limiter completionBlock:nil];
         self.limiter = nil;
     }
 }
@@ -614,9 +614,9 @@ static const int kInputChannelsChangedContext;
 - (void)expanderSwitchChanged:(UISwitch*)sender {
     if ( sender.isOn ) {
         self.expander = [[AEExpanderFilter alloc] init];
-        [_audioController addFilter:_expander];
+        [_audioController addFilter:_expander completionBlock:nil];
     } else {
-        [_audioController removeFilter:_expander];
+        [_audioController removeFilter:_expander completionBlock:nil];
         self.expander = nil;
     }
 }
@@ -633,9 +633,9 @@ static const int kInputChannelsChangedContext;
     if ( sender.isOn ) {
         self.reverb = [[AEReverbFilter alloc] init];
         _reverb.dryWetMix = 80;
-        [_audioController addFilter:_reverb];
+        [_audioController addFilter:_reverb completionBlock:nil];
     } else {
-        [_audioController removeFilter:_reverb];
+        [_audioController removeFilter:_reverb completionBlock:nil];
         self.reverb = nil;
     }
 }
@@ -661,8 +661,8 @@ static const int kInputChannelsChangedContext;
 - (void)record:(id)sender {
     if ( _recorder ) {
         [_recorder finishRecording];
-        [_audioController removeOutputReceiver:_recorder];
-        [_audioController removeInputReceiver:_recorder];
+        [_audioController removeOutputReceiver:_recorder completionBlock:nil];
+        [_audioController removeInputReceiver:_recorder completionBlock:nil];
         self.recorder = nil;
         _recordButton.selected = NO;
     } else {
@@ -682,14 +682,14 @@ static const int kInputChannelsChangedContext;
         
         _recordButton.selected = YES;
         
-        [_audioController addOutputReceiver:_recorder];
-        [_audioController addInputReceiver:_recorder];
+        [_audioController addOutputReceiver:_recorder completionBlock:nil];
+        [_audioController addInputReceiver:_recorder completionBlock:nil];
     }
 }
 
 - (void)play:(id)sender {
     if ( _player ) {
-        [_audioController removeChannels:@[_player]];
+        [_audioController removeChannels:@[_player] completionBlock:nil];
         self.player = nil;
         _playButton.selected = NO;
     } else {
@@ -717,7 +717,7 @@ static const int kInputChannelsChangedContext;
             strongSelf->_playButton.selected = NO;
             weakSelf.player = nil;
         };
-        [_audioController addChannels:@[_player]];
+        [_audioController addChannels:@[_player] completionBlock:nil];
         
         _playButton.selected = YES;
     }
