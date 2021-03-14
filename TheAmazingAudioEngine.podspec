@@ -13,10 +13,10 @@ Pod::Spec.new do |s|
   s.tvos.deployment_target = '9.0'
   s.frameworks        = 'AudioToolbox', 'Accelerate'
   s.source_files      = 'TheAmazingAudioEngine/**/*.{h,m,c}', 
-  						'Modules/**/*.{h,m,c}'
+  						          'Modules/**/*.{h,m,c}'
   s.exclude_files     = 'Modules/TPCircularBuffer', 
-  						'TheAmazingAudioEngine/AERealtimeWatchdog*', 
-  						'TheAmazingAudioEngine/Library/TPCircularBuffer'
+  						          'TheAmazingAudioEngine/AERealtimeWatchdog*', 
+  						          'TheAmazingAudioEngine/Library/TPCircularBuffer'
   s.osx.exclude_files = 'Modules/Filters/AEReverbFilter.*'
   s.dependency 'TPCircularBuffer'
 end
