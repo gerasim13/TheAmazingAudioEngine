@@ -2801,7 +2801,7 @@ AudioTimeStamp AEAudioControllerCurrentAudioTimestamp(__unsafe_unretained AEAudi
     }
 }
 
-#if TARGET_OS_IPHONE && AU_SUPPORT_INTERAPP_AUDIO && !TARGET_OS_MACCATALYST
+#if (TARGET_OS_IPHONE || TARGET_OS_MACCATALYST) && AU_SUPPORT_INTERAPP_AUDIO
 static void interAppConnectedChangeCallback(void *inRefCon, AudioUnit inUnit, AudioUnitPropertyID inID, AudioUnitScope inScope, AudioUnitElement inElement) {
     dispatch_async(dispatch_get_main_queue(), ^{
         AEAudioController *THIS = (__bridge AEAudioController*)inRefCon;
