@@ -3750,20 +3750,50 @@ static void audioUnitStreamFormatChanged(void *inRefCon, AudioUnit inUnit, Audio
         // Setup multirouting
         if (_preferredOutputNumberOfChannels && _numberOfOutputChannels >= _preferredOutputNumberOfChannels)
         {
-            UInt32 channelMapSize = sizeof(SInt32) * _numberOfOutputChannels;
-            SInt32 *channelMap = malloc(channelMapSize);
-
-            // Setup io unit
-            memset(channelMap, -1, channelMapSize);
-            for (int i = 0; i < _preferredOutputNumberOfChannels && i < _numberOfOutputChannels; ++i)
+            OSStatus err;
+            UInt32 outSize;
+            Boolean isWritable;
+            
+            int fPhysicalInputs = 0;
+            int fPhysicalOutputs = 0;
+            
+            err = AudioUnitGetPropertyInfo(_ioAudioUnit,
+                                           kAudioOutputUnitProperty_ChannelMap,
+                                           kAudioUnitScope_Input, 1, &outSize, &isWritable);
+            if (err == noErr)
             {
-                channelMap[i] = i;
+                fPhysicalInputs = (err == noErr) ? outSize / sizeof(SInt32) : 0;
             }
-
-            AECheckOSStatus(AudioUnitSetProperty(_ioAudioUnit, kAudioOutputUnitProperty_ChannelMap, kAudioUnitScope_Output, 0, channelMap, channelMapSize), "AudioUnitSetProperty(kAudioOutputUnitProperty_ChannelMap)");
-            AECheckOSStatus(AudioUnitSetProperty(_ioAudioUnit, kAudioOutputUnitProperty_ChannelMap, kAudioUnitScope_Input, 1, channelMap, channelMapSize), "AudioUnitSetProperty(kAudioOutputUnitProperty_ChannelMap)");
-
-            free(channelMap);
+                    
+            err = AudioUnitGetPropertyInfo(_ioAudioUnit,
+                                           kAudioOutputUnitProperty_ChannelMap,
+                                           kAudioUnitScope_Output, 0, &outSize, &isWritable);
+            if (err == noErr)
+            {
+                fPhysicalOutputs = (err == noErr) ? outSize / sizeof(SInt32) : 0;
+            }
+            
+            // Setup io unit
+            if (_preferredOutputNumberOfChannels < fPhysicalInputs) {
+                SInt32 chanArr[fPhysicalInputs];
+                for (int i = 0; i < fPhysicalInputs; i++) {
+                    chanArr[i] = -1;
+                }
+                for (int i = 0; i < _preferredOutputNumberOfChannels; i++) {
+                    chanArr[i] = i;
+                }
+                AECheckOSStatus(AudioUnitSetProperty(_ioAudioUnit, kAudioOutputUnitProperty_ChannelMap, kAudioUnitScope_Input, 1, chanArr, sizeof(SInt32) * fPhysicalInputs), "AudioUnitSetProperty(kAudioOutputUnitProperty_ChannelMap)");
+            }
+            if (_preferredOutputNumberOfChannels < fPhysicalOutputs) {
+                SInt32 chanArr[fPhysicalOutputs];
+                for (int i = 0;    i < fPhysicalOutputs; i++) {
+                    chanArr[i] = -1;
+                }
+                for (int i = 0; i < _preferredOutputNumberOfChannels; i++) {
+                    chanArr[i] = i;
+                }
+                AECheckOSStatus(AudioUnitSetProperty(_ioAudioUnit, kAudioOutputUnitProperty_ChannelMap, kAudioUnitScope_Output, 0, chanArr, sizeof(SInt32) * fPhysicalOutputs), "AudioUnitSetProperty(kAudioOutputUnitProperty_ChannelMap)");
+            }
         }
         
         // Reconfigure graph
