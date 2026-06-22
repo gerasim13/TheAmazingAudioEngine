@@ -23,15 +23,15 @@
 //  3. This notice may not be removed or altered from any source distribution.
 //
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #import <AudioToolbox/AudioToolbox.h>
 #import <AudioUnit/AudioUnit.h>
 #import <Foundation/Foundation.h>
 #import <AVFoundation/AVFoundation.h>
 #import "AEMessageQueue.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 @class AEAudioController;
 
