@@ -138,6 +138,7 @@ static OSStatus filterCallback(__unsafe_unretained AELimiterFilter *THIS,
                                __unsafe_unretained AEAudioController *audioController,
                                AEAudioFilterProducer producer,
                                void                     *producerToken,
+                               AudioUnitRenderActionFlags *ioActionFlags,
                                const AudioTimeStamp     *time,
                                UInt32                    frames,
                                AudioBufferList          *audio) {

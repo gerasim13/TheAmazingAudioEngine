@@ -181,6 +181,7 @@
 
 static OSStatus renderCallback(__unsafe_unretained AESequencerChannel *THIS,
                                __unsafe_unretained AEAudioController *audioController,
+                               AudioUnitRenderActionFlags *ioActionFlags,
                                const AudioTimeStamp *inTimeStamp,
                                UInt32 frames,
                                AudioBufferList *audio) {
